@@ -1,14 +1,16 @@
+# frozen_string_literal: true
+
 module ActiveSupport
   module Testing
     # Logs a "PostsControllerTest: test name" heading before each test to
     # make test.log easier to search and follow along with.
-    module TaggedLogging #:nodoc:
+    module TaggedLogging # :nodoc:
       attr_writer :tagged_logger
 
       def before_setup
         if tagged_logger && tagged_logger.info?
           heading = "#{self.class}: #{name}"
-          divider = '-' * heading.size
+          divider = "-" * heading.size
           tagged_logger.info divider
           tagged_logger.info heading
           tagged_logger.info divider

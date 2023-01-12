@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
 
 module ContentType
   class BaseController < ActionController::Base
@@ -43,8 +45,8 @@ module ContentType
     test "default response is text/plain and UTF8" do
       with_routing do |set|
         set.draw do
-          ActiveSupport::Deprecation.silence do
-            get ':controller', :action => 'index'
+          ActionDispatch.deprecator.silence do
+            get ":controller", action: "index"
           end
         end
 

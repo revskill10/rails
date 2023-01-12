@@ -1,7 +1,9 @@
-require 'yaml'
+# frozen_string_literal: true
+
+require "yaml"
 
 YAML.add_builtin_type("omap") do |type, val|
-  ActiveSupport::OrderedHash[val.map{ |v| v.to_a.first }]
+  ActiveSupport::OrderedHash[val.map { |v| v.to_a.first }]
 end
 
 module ActiveSupport
@@ -14,18 +16,18 @@ module ActiveSupport
   #   oh.keys # => [:a, :b], this order is guaranteed
   #
   # Also, maps the +omap+ feature for YAML files
-  # (See http://yaml.org/type/omap.html) to support ordered items
-  # when loading from yaml.
+  # (See https://yaml.org/type/omap.html) to support ordered items
+  # when loading from YAML.
   #
   # <tt>ActiveSupport::OrderedHash</tt> is namespaced to prevent conflicts
   # with other implementations.
-  class OrderedHash < ::Hash
+  class OrderedHash < ::Hash # :nodoc:
     def to_yaml_type
       "!tag:yaml.org,2002:omap"
     end
 
     def encode_with(coder)
-      coder.represent_seq '!omap', map { |k,v| { k => v } }
+      coder.represent_seq "!omap", map { |k, v| { k => v } }
     end
 
     def select(*args, &block)

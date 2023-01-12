@@ -1,5 +1,7 @@
-require 'abstract_unit'
-require 'active_support/core_ext/array'
+# frozen_string_literal: true
+
+require_relative "../../abstract_unit"
+require "active_support/core_ext/array"
 
 class WrapTest < ActiveSupport::TestCase
   class FakeCollection
@@ -10,7 +12,7 @@ class WrapTest < ActiveSupport::TestCase
 
   class Proxy
     def initialize(target) @target = target end
-    def method_missing(*a) @target.send(*a) end
+    def method_missing(*a) @target.public_send(*a) end
   end
 
   class DoubtfulToAry

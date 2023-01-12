@@ -1,6 +1,4 @@
-require 'active_support/core_ext/array'
-require 'active_support/core_ext/hash/except'
-require 'active_support/core_ext/kernel/singleton_class'
+# frozen_string_literal: true
 
 module ActiveRecord
   # = Active Record \Named \Scopes
@@ -21,28 +19,45 @@ module ActiveRecord
         #
         # You can define a scope that applies to all finders using
         # {default_scope}[rdoc-ref:Scoping::Default::ClassMethods#default_scope].
-        def all
-          if current_scope
-            current_scope.clone
+        def all(all_queries: nil)
+          scope = current_scope
+
+          if scope
+            if self == scope.klass
+              scope.clone
+            else
+              relation.merge!(scope)
+            end
           else
-            default_scoped
+            default_scoped(all_queries: all_queries)
           end
         end
 
-        def default_scoped # :nodoc:
-          scope = build_default_scope
-
-          if scope
-            relation.spawn.merge!(scope)
+        def scope_for_association(scope = relation) # :nodoc:
+          if current_scope&.empty_scope?
+            scope
           else
-            relation
+            default_scoped(scope)
+          end
+        end
+
+        # Returns a scope for the model with default scopes.
+        def default_scoped(scope = relation, all_queries: nil)
+          build_default_scope(scope, all_queries: all_queries) || scope
+        end
+
+        def default_extensions # :nodoc:
+          if scope = scope_for_association || build_default_scope
+            scope.extensions
+          else
+            []
           end
         end
 
         # Adds a class method for retrieving and querying objects.
         # The method is intended to return an ActiveRecord::Relation
         # object, which is composable with other scopes.
-        # If it returns nil or false, an
+        # If it returns +nil+ or +false+, an
         # {all}[rdoc-ref:Scoping::Named::ClassMethods#all] scope is returned instead.
         #
         # A \scope represents a narrowing of a database query, such as
@@ -56,10 +71,6 @@ module ActiveRecord
         # The above calls to #scope define class methods <tt>Shirt.red</tt> and
         # <tt>Shirt.dry_clean_only</tt>. <tt>Shirt.red</tt>, in effect,
         # represents the query <tt>Shirt.where(color: 'red')</tt>.
-        #
-        # You should always pass a callable object to the scopes defined
-        # with #scope. This ensures that the scope is re-evaluated each
-        # time it is called.
         #
         # Note that this is simply 'syntactic sugar' for defining an actual
         # class method:
@@ -142,7 +153,7 @@ module ActiveRecord
         #   Article.featured.titles
         def scope(name, body, &block)
           unless body.respond_to?(:call)
-            raise ArgumentError, 'The scope body needs to be callable.'
+            raise ArgumentError, "The scope body needs to be callable."
           end
 
           if dangerous_class_method?(name)
@@ -151,34 +162,36 @@ module ActiveRecord
               "a class method with the same name."
           end
 
-          valid_scope_name?(name)
+          if method_defined_within?(name, Relation)
+            raise ArgumentError, "You tried to define a scope named \"#{name}\" " \
+              "on the model \"#{self.name}\", but ActiveRecord::Relation already defined " \
+              "an instance method with the same name."
+          end
+
           extension = Module.new(&block) if block
 
           if body.respond_to?(:to_proc)
-            singleton_class.send(:define_method, name) do |*args|
-              scope = all.scoping { instance_exec(*args, &body) }
+            singleton_class.define_method(name) do |*args|
+              scope = all._exec_scope(*args, &body)
               scope = scope.extending(extension) if extension
-
-              scope || all
+              scope
             end
           else
-            singleton_class.send(:define_method, name) do |*args|
-              scope = all.scoping { body.call(*args) }
+            singleton_class.define_method(name) do |*args|
+              scope = body.call(*args) || all
               scope = scope.extending(extension) if extension
-
-              scope || all
+              scope
             end
           end
+          singleton_class.send(:ruby2_keywords, name)
+
+          generate_relation_method(name)
         end
 
-      protected
-
-        def valid_scope_name?(name)
-          if respond_to?(name, true)
-            logger.warn "Creating scope :#{name}. " \
-                        "Overwriting existing method #{self.name}.#{name}."
+        private
+          def singleton_method_added(name)
+            generate_relation_method(name) if Kernel.respond_to?(name) && !ActiveRecord::Relation.method_defined?(name)
           end
-        end
       end
     end
   end

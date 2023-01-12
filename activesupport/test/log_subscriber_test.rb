@@ -1,5 +1,7 @@
-require 'abstract_unit'
-require 'active_support/log_subscriber/test_helper'
+# frozen_string_literal: true
+
+require_relative "abstract_unit"
+require "active_support/log_subscriber/test_helper"
 
 class MyLogSubscriber < ActiveSupport::LogSubscriber
   attr_reader :event
@@ -16,7 +18,15 @@ class MyLogSubscriber < ActiveSupport::LogSubscriber
   end
 
   def bar(event)
-    info "#{color("cool", :red)}, #{color("isn't it?", :blue, true)}"
+    info "#{color("cool", :red)}, #{color("isn't it?", :blue, bold: true)}"
+  end
+
+  def baz(event)
+    info "#{color("rad", :green, bold: true, underline: true)}, #{color("isn't it?", :yellow, italic: true)}"
+  end
+
+  def deprecated(event)
+    info "#{color("bogus", :red, true)}"
   end
 
   def puke(event)
@@ -54,6 +64,19 @@ class SyncLogSubscriberTest < ActiveSupport::TestCase
     assert_equal "\e[31mcool\e[0m, \e[1m\e[34misn't it?\e[0m", @logger.logged(:info).last
   end
 
+  def test_set_mode_for_messages
+    ActiveSupport::LogSubscriber.colorize_logging = true
+    @log_subscriber.baz(nil)
+    assert_equal "\e[1;4m\e[32mrad\e[0m, \e[3m\e[33misn't it?\e[0m", @logger.logged(:info).last
+  end
+
+  def test_deprecated_bold_format_for_messages
+    ActiveSupport::LogSubscriber.colorize_logging = true
+    assert_deprecated(ActiveSupport.deprecator) do
+      @log_subscriber.deprecated(nil)
+    end
+  end
+
   def test_does_not_set_color_if_colorize_logging_is_set_to_false
     @log_subscriber.bar(nil)
     assert_equal "cool, isn't it?", @logger.logged(:info).last
@@ -73,11 +96,30 @@ class SyncLogSubscriberTest < ActiveSupport::TestCase
     assert_kind_of ActiveSupport::Notifications::Event, @log_subscriber.event
   end
 
-  def test_does_not_send_the_event_if_it_doesnt_match_the_class
+  def test_event_attributes
     ActiveSupport::LogSubscriber.attach_to :my_log_subscriber, @log_subscriber
-    instrument "unknown_event.my_log_subscriber"
+    instrument "some_event.my_log_subscriber" do
+      [] # Make an allocation
+    end
     wait
-    # If we get here, it means that NoMethodError was not raised.
+    event = @log_subscriber.event
+    if defined?(JRUBY_VERSION)
+      assert_equal 0, event.cpu_time
+      assert_equal 0, event.allocations
+    else
+      assert_operator event.cpu_time, :>, 0
+      assert_operator event.allocations, :>, 0
+    end
+    assert_operator event.duration, :>, 0
+    assert_operator event.idle_time, :>, 0
+  end
+
+  def test_does_not_send_the_event_if_it_doesnt_match_the_class
+    assert_nothing_raised do
+      ActiveSupport::LogSubscriber.attach_to :my_log_subscriber, @log_subscriber
+      instrument "unknown_event.my_log_subscriber"
+      wait
+    end
   end
 
   def test_does_not_send_the_event_if_logger_is_nil
@@ -90,9 +132,11 @@ class SyncLogSubscriberTest < ActiveSupport::TestCase
   end
 
   def test_does_not_fail_with_non_namespaced_events
-    ActiveSupport::LogSubscriber.attach_to :my_log_subscriber, @log_subscriber
-    instrument "whatever"
-    wait
+    assert_nothing_raised do
+      ActiveSupport::LogSubscriber.attach_to :my_log_subscriber, @log_subscriber
+      instrument "whatever"
+      wait
+    end
   end
 
   def test_flushes_loggers
@@ -116,7 +160,7 @@ class SyncLogSubscriberTest < ActiveSupport::TestCase
     wait
 
     assert_equal 1, @logger.logged(:info).size
-    assert_equal 'some_event.my_log_subscriber', @logger.logged(:info).last
+    assert_equal "some_event.my_log_subscriber", @logger.logged(:info).last
 
     assert_equal 1, @logger.logged(:error).size
     assert_match 'Could not log "puke.my_log_subscriber" event. RuntimeError: puke', @logger.logged(:error).last

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module JobBuffer
   class << self
     def clear
@@ -15,5 +17,11 @@ module JobBuffer
     def last_value
       values.last
     end
+  end
+end
+
+class ActiveSupport::TestCase
+  teardown do
+    JobBuffer.clear
   end
 end

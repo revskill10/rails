@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
 
 class RescueController < ActionController::Base
   class NotAuthorized < StandardError
@@ -31,59 +33,44 @@ class RescueController < ActionController::Base
   class ResourceUnavailableToRescueAsString < StandardError
   end
 
-  # We use a fully-qualified name in some strings, and a relative constant
+  wrap_parameters format: :json
+
+  # We use a fully qualified name in some strings, and a relative constant
   # name in some other to test correct handling of both cases.
 
-  rescue_from NotAuthorized, :with => :deny_access
-  rescue_from 'RescueController::NotAuthorizedToRescueAsString', :with => :deny_access
+  rescue_from NotAuthorized, with: :deny_access
+  rescue_from "RescueController::NotAuthorizedToRescueAsString", with: :deny_access
 
-  rescue_from RecordInvalid, :with => :show_errors
-  rescue_from 'RescueController::RecordInvalidToRescueAsString', :with => :show_errors
+  rescue_from RecordInvalid, with: :show_errors
+  rescue_from "RescueController::RecordInvalidToRescueAsString", with: :show_errors
 
-  rescue_from NotAllowed, :with => proc { head :forbidden }
-  rescue_from 'RescueController::NotAllowedToRescueAsString', :with => proc { head :forbidden }
+  rescue_from NotAllowed, with: proc { head :forbidden }
+  rescue_from "RescueController::NotAllowedToRescueAsString", with: proc { head :forbidden }
 
   rescue_from InvalidRequest, with: proc { |exception| render plain: exception.message }
-  rescue_from 'InvalidRequestToRescueAsString', with: proc { |exception| render plain: exception.message }
+  rescue_from "InvalidRequestToRescueAsString", with: proc { |exception| render plain: exception.message }
 
   rescue_from BadGateway do
     head 502
   end
-  rescue_from 'BadGatewayToRescueAsString' do
+  rescue_from "BadGatewayToRescueAsString" do
     head 502
   end
 
   rescue_from ResourceUnavailable do |exception|
     render plain: exception.message
   end
-  rescue_from 'ResourceUnavailableToRescueAsString' do |exception|
+  rescue_from "ResourceUnavailableToRescueAsString" do |exception|
     render plain: exception.message
   end
 
-  rescue_from ActionView::TemplateError do
-    render plain: 'action_view templater error'
+  rescue_from ActionDispatch::Http::Parameters::ParseError do
+    render plain: "parse error", status: :bad_request
   end
 
-  rescue_from IOError do
-    render plain: 'io error'
-  end
-
-  before_action(only: :before_action_raises) { raise 'umm nice' }
+  before_action(only: :before_action_raises) { raise "umm nice" }
 
   def before_action_raises
-  end
-
-  def raises
-    render plain: 'already rendered'
-    raise "don't panic!"
-  end
-
-  def method_not_allowed
-    raise ActionController::MethodNotAllowed.new(:get, :head, :put)
-  end
-
-  def not_implemented
-    raise ActionController::NotImplemented.new(:get, :put)
   end
 
   def not_authorized
@@ -128,6 +115,11 @@ class RescueController < ActionController::Base
     raise ResourceUnavailableToRescueAsString
   end
 
+  def arbitrary_action
+    params
+    render plain: "arbitrary action"
+  end
+
   def missing_template
   end
 
@@ -149,7 +141,7 @@ class RescueController < ActionController::Base
     raise RangeError
   end
 
-  protected
+  private
     def deny_access
       head :forbidden
     end
@@ -160,7 +152,6 @@ class RescueController < ActionController::Base
 end
 
 class ExceptionInheritanceRescueController < ActionController::Base
-
   class ParentException < StandardError
   end
 
@@ -170,9 +161,9 @@ class ExceptionInheritanceRescueController < ActionController::Base
   class GrandchildException < ChildException
   end
 
-  rescue_from ChildException,      :with => lambda { head :ok }
-  rescue_from ParentException,     :with => lambda { head :created }
-  rescue_from GrandchildException, :with => lambda { head :no_content }
+  rescue_from ChildException,      with: lambda { head :ok }
+  rescue_from ParentException,     with: lambda { head :created }
+  rescue_from GrandchildException, with: lambda { head :no_content }
 
   def raise_parent_exception
     raise ParentException
@@ -206,7 +197,7 @@ class ControllerInheritanceRescueController < ExceptionInheritanceRescueControll
   class SecondExceptionInChildController < StandardError
   end
 
-  rescue_from FirstExceptionInChildController, 'SecondExceptionInChildController', :with => lambda { head :gone }
+  rescue_from FirstExceptionInChildController, "SecondExceptionInChildController", with: lambda { head :gone }
 
   def raise_first_exception_in_child_controller
     raise FirstExceptionInChildController
@@ -291,30 +282,46 @@ class RescueControllerTest < ActionController::TestCase
     assert_equal "RescueController::ResourceUnavailableToRescueAsString", @response.body
   end
 
-  test 'rescue when wrapper has more specific handler than cause' do
+  test "rescue when wrapper has more specific handler than cause" do
     get :exception_with_more_specific_handler_for_wrapper
     assert_response :forbidden
   end
 
-  test 'rescue when cause has more specific handler than wrapper' do
+  test "rescue when cause has more specific handler than wrapper" do
     get :exception_with_more_specific_handler_for_cause
     assert_response :unprocessable_entity
   end
 
-  test 'rescue when cause has handler, but wrapper doesnt' do
+  test "rescue when cause has handler, but wrapper doesn't" do
     get :exception_with_no_handler_for_wrapper
     assert_response :unprocessable_entity
   end
+
+  test "can rescue a ParseError" do
+    capture_log_output do
+      post :arbitrary_action, body: "{", as: :json
+    end
+    assert_response :bad_request
+    assert_equal "parse error", response.body
+  end
+
+  private
+    def capture_log_output
+      output = StringIO.new
+      request.set_header "action_dispatch.logger", ActiveSupport::Logger.new(output)
+      yield
+      output.string
+    end
 end
 
 class RescueTest < ActionDispatch::IntegrationTest
   class TestController < ActionController::Base
     class RecordInvalid < StandardError
       def message
-        'invalid'
+        "invalid"
       end
     end
-    rescue_from RecordInvalid, :with => :show_errors
+    rescue_from RecordInvalid, with: :show_errors
 
     def foo
       render plain: "foo"
@@ -324,38 +331,32 @@ class RescueTest < ActionDispatch::IntegrationTest
       raise RecordInvalid
     end
 
-    def b00m
-      raise 'b00m'
-    end
-
-    protected
+    private
       def show_errors(exception)
         render plain: exception.message
       end
   end
 
-  test 'normal request' do
+  test "normal request" do
     with_test_routing do
-      get '/foo'
-      assert_equal 'foo', response.body
+      get "/foo"
+      assert_equal "foo", response.body
     end
   end
 
-  test 'rescue exceptions inside controller' do
+  test "rescue exceptions inside controller" do
     with_test_routing do
-      get '/invalid'
-      assert_equal 'invalid', response.body
+      get "/invalid"
+      assert_equal "invalid", response.body
     end
   end
 
   private
-
     def with_test_routing
       with_routing do |set|
         set.draw do
-          get 'foo', :to => ::RescueTest::TestController.action(:foo)
-          get 'invalid', :to => ::RescueTest::TestController.action(:invalid)
-          get 'b00m', :to => ::RescueTest::TestController.action(:b00m)
+          get "foo", to: ::RescueTest::TestController.action(:foo)
+          get "invalid", to: ::RescueTest::TestController.action(:invalid)
         end
         yield
       end

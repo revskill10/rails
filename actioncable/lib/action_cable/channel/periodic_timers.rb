@@ -1,11 +1,12 @@
+# frozen_string_literal: true
+
 module ActionCable
   module Channel
     module PeriodicTimers
       extend ActiveSupport::Concern
 
       included do
-        class_attribute :periodic_timers, instance_reader: false
-        self.periodic_timers = []
+        class_attribute :periodic_timers, instance_reader: false, default: []
 
         after_subscribe   :start_periodic_timers
         after_unsubscribe :stop_periodic_timers
@@ -30,7 +31,7 @@ module ActionCable
         def periodically(callback_or_method_name = nil, every:, &block)
           callback =
             if block_given?
-              raise ArgumentError, 'Pass a block or provide a callback arg, not both' if callback_or_method_name
+              raise ArgumentError, "Pass a block or provide a callback arg, not both" if callback_or_method_name
               block
             else
               case callback_or_method_name

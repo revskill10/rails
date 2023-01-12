@@ -1,8 +1,6 @@
-require 'rails/test_unit/line_filtering'
+# frozen_string_literal: true
 
-if defined?(Rake.application) && Rake.application.top_level_tasks.grep(/^(default$|test(:|$))/).any?
-  ENV['RAILS_ENV'] ||= 'test'
-end
+require "rails/test_unit/line_filtering"
 
 module Rails
   class TestUnitRailtie < Rails::Railtie
@@ -11,10 +9,13 @@ module Rails
                                    fixture_replacement: nil
 
       c.integration_tool :test_unit
+      c.system_tests :test_unit
     end
 
     initializer "test_unit.line_filtering" do
-      ActiveSupport::TestCase.extend Rails::LineFiltering
+      ActiveSupport.on_load(:active_support_test_case) {
+        ActiveSupport::TestCase.extend Rails::LineFiltering
+      }
     end
 
     rake_tasks do

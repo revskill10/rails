@@ -1,14 +1,12 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module NullRelation # :nodoc:
-    def exec_queries
-      @records = [].freeze
-    end
-
     def pluck(*column_names)
       []
     end
 
-    def delete_all(_conditions = nil)
+    def delete_all
       0
     end
 
@@ -18,10 +16,6 @@ module ActiveRecord
 
     def delete(_id_or_array)
       0
-    end
-
-    def size
-      calculate :size, nil
     end
 
     def empty?
@@ -44,38 +38,14 @@ module ActiveRecord
       false
     end
 
-    def to_sql
-      ""
-    end
-
-    def count(*)
-      calculate :count, nil
-    end
-
-    def sum(*)
-      calculate :sum, nil
-    end
-
-    def average(*)
-      calculate :average, nil
-    end
-
-    def minimum(*)
-      calculate :minimum, nil
-    end
-
-    def maximum(*)
-      calculate :maximum, nil
-    end
-
     def calculate(operation, _column_name)
-      if [:count, :sum, :size].include? operation
-        group_values.any? ? Hash.new : 0
-      elsif [:average, :minimum, :maximum].include?(operation) && group_values.any?
-        Hash.new
-      else
-        nil
+      result = case operation
+               when :count, :sum
+                 group_values.any? ? Hash.new : 0
+               when :average, :minimum, :maximum
+                 group_values.any? ? Hash.new : nil
       end
+      @async ? Promise::Complete.new(result) : result
     end
 
     def exists?(_conditions = :none)
@@ -85,5 +55,10 @@ module ActiveRecord
     def or(other)
       other.spawn
     end
+
+    private
+      def exec_main_query(async: false)
+        [].freeze
+      end
   end
 end

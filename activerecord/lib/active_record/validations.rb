@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   # = Active Record \RecordInvalid
   #
@@ -28,25 +30,28 @@ module ActiveRecord
 
   # = Active Record \Validations
   #
-  # Active Record includes the majority of its validations from ActiveModel::Validations
-  # all of which accept the <tt>:on</tt> argument to define the context where the
-  # validations are active. Active Record will always supply either the context of
-  # <tt>:create</tt> or <tt>:update</tt> dependent on whether the model is a
+  # Active Record includes the majority of its validations from ActiveModel::Validations.
+  #
+  # In Active Record, all validations are performed on save by default.
+  # Validations accept the <tt>:on</tt> argument to define the context where
+  # the validations are active. Active Record will pass either the context of
+  # <tt>:create</tt> or <tt>:update</tt> depending on whether the model is a
   # {new_record?}[rdoc-ref:Persistence#new_record?].
   module Validations
     extend ActiveSupport::Concern
     include ActiveModel::Validations
 
     # The validation process on save can be skipped by passing <tt>validate: false</tt>.
+    # The validation context can be changed by passing <tt>context: context</tt>.
     # The regular {ActiveRecord::Base#save}[rdoc-ref:Persistence#save] method is replaced
     # with this when the validations module is mixed in, which it is by default.
-    def save(options={})
+    def save(**options)
       perform_validations(options) ? super : false
     end
 
     # Attempts to save the record just like {ActiveRecord::Base#save}[rdoc-ref:Base#save] but
     # will raise an ActiveRecord::RecordInvalid exception instead of returning +false+ if the record is not valid.
-    def save!(options={})
+    def save!(**options)
       perform_validations(options) ? super : raise_validation_error
     end
 
@@ -68,8 +73,7 @@ module ActiveRecord
 
     alias_method :validate, :valid?
 
-  protected
-
+  private
     def default_validation_context
       new_record? ? :create : :update
     end
@@ -78,7 +82,7 @@ module ActiveRecord
       raise(RecordInvalid.new(self))
     end
 
-    def perform_validations(options={}) # :nodoc:
+    def perform_validations(options = {})
       options[:validate] == false || valid?(options[:context])
     end
   end
@@ -89,3 +93,4 @@ require "active_record/validations/uniqueness"
 require "active_record/validations/presence"
 require "active_record/validations/absence"
 require "active_record/validations/length"
+require "active_record/validations/numericality"

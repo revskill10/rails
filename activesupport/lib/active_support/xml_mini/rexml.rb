@@ -1,12 +1,14 @@
-require 'active_support/core_ext/kernel/reporting'
-require 'active_support/core_ext/object/blank'
-require 'stringio'
+# frozen_string_literal: true
+
+require "active_support/core_ext/kernel/reporting"
+require "active_support/core_ext/object/blank"
+require "stringio"
 
 module ActiveSupport
-  module XmlMini_REXML #:nodoc:
+  module XmlMini_REXML # :nodoc:
     extend self
 
-    CONTENT_KEY = '__content__'.freeze
+    CONTENT_KEY = "__content__"
 
     # Parse an XML Document string or IO into a simple hash.
     #
@@ -17,13 +19,13 @@ module ActiveSupport
     #   XML Document string or IO to parse
     def parse(data)
       if !data.respond_to?(:read)
-        data = StringIO.new(data || '')
+        data = StringIO.new(data || "")
       end
 
       if data.eof?
         {}
       else
-        silence_warnings { require 'rexml/document' } unless defined?(REXML::Document)
+        require_rexml unless defined?(REXML::Document)
         doc = REXML::Document.new(data)
 
         if doc.root
@@ -36,6 +38,13 @@ module ActiveSupport
     end
 
     private
+      def require_rexml
+        silence_warnings { require "rexml/document" }
+      rescue LoadError => e
+        $stderr.puts "You don't have rexml installed in your application. Please add it to your Gemfile and run bundle install"
+        raise e
+      end
+
       # Convert an XML element and merge into the hash
       #
       # hash::
@@ -55,7 +64,7 @@ module ActiveSupport
         hash = get_attributes(element)
 
         if element.has_elements?
-          element.each_element {|child| merge_element!(hash, child, depth - 1) }
+          element.each_element { |child| merge_element!(hash, child, depth - 1) }
           merge_texts!(hash, element) unless empty_content?(element)
           hash
         else
@@ -74,7 +83,7 @@ module ActiveSupport
           hash
         else
           # must use value to prevent double-escaping
-          texts = ''
+          texts = +""
           element.texts.each { |t| texts << t.value }
           merge!(hash, CONTENT_KEY, texts)
         end
@@ -113,7 +122,7 @@ module ActiveSupport
       #   XML element to extract attributes from.
       def get_attributes(element)
         attributes = {}
-        element.attributes.each { |n,v| attributes[n] = v }
+        element.attributes.each { |n, v| attributes[n] = v }
         attributes
       end
 

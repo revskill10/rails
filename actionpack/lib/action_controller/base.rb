@@ -1,4 +1,6 @@
-require 'action_view'
+# frozen_string_literal: true
+
+require "action_view"
 require "action_controller/log_subscriber"
 require "action_controller/metal/params_wrapper"
 
@@ -8,7 +10,7 @@ module ActionController
   # on the controller, which will automatically be made accessible to the web-server through \Rails Routes.
   #
   # By default, only the ApplicationController in a \Rails application inherits from <tt>ActionController::Base</tt>. All other
-  # controllers in turn inherit from ApplicationController. This gives you one class to configure things such as
+  # controllers inherit from ApplicationController. This gives you one class to configure things such as
   # request forgery protection and filtering of sensitive request parameters.
   #
   # A sample controller could look like this:
@@ -30,7 +32,7 @@ module ActionController
   #
   # Unlike index, the create action will not render a template. After performing its main purpose (creating a
   # new post), it initiates a redirect instead. This redirect works by returning an external
-  # "302 Moved" HTTP response that takes the user to the index action.
+  # <tt>302 Moved</tt> HTTP response that takes the user to the index action.
   #
   # These two methods represent the two basic action archetypes used in Action Controllers: Get-and-show and do-and-redirect.
   # Most actions are variations on these themes.
@@ -59,7 +61,7 @@ module ActionController
   #   <input type="text" name="post[name]" value="david">
   #   <input type="text" name="post[address]" value="hyacintvej">
   #
-  # A request stemming from a form holding these inputs will include <tt>{ "post" => { "name" => "david", "address" => "hyacintvej" } }</tt>.
+  # A request coming from a form holding these inputs will include <tt>{ "post" => { "name" => "david", "address" => "hyacintvej" } }</tt>.
   # If the address input had been named <tt>post[address][street]</tt>, the <tt>params</tt> would have included
   # <tt>{ "post" => { "address" => { "street" => "hyacintvej" } } }</tt>. There's no limit to the depth of the nesting.
   #
@@ -74,9 +76,9 @@ module ActionController
   #
   #   session[:person] = Person.authenticate(user_name, password)
   #
-  # And retrieved again through the same hash:
+  # You can retrieve it again through the same hash:
   #
-  #   Hello #{session[:person]}
+  #   "Hello #{session[:person]}"
   #
   # For removing objects from the session, you can either assign a single key to +nil+:
   #
@@ -85,10 +87,11 @@ module ActionController
   #
   # or you can remove the entire session with +reset_session+.
   #
-  # Sessions are stored by default in a browser cookie that's cryptographically signed, but unencrypted.
-  # This prevents the user from tampering with the session but also allows them to see its contents.
-  #
-  # Do not put secret information in cookie-based sessions!
+  # By default, sessions are stored in an encrypted browser cookie (see
+  # ActionDispatch::Session::CookieStore). Thus the user will not be able to
+  # read or edit the session data. However, the user can keep a copy of the
+  # cookie even after it has expired, so you should avoid storing sensitive
+  # information in cookie-based sessions.
   #
   # == Responses
   #
@@ -164,22 +167,6 @@ module ActionController
   class Base < Metal
     abstract!
 
-    # We document the request and response methods here because albeit they are
-    # implemented in ActionController::Metal, the type of the returned objects
-    # is unknown at that level.
-
-    ##
-    # :method: request
-    #
-    # Returns an ActionDispatch::Request instance that represents the
-    # current request.
-
-    ##
-    # :method: response
-    #
-    # Returns an ActionDispatch::Response that represents the current
-    # response.
-
     # Shortcut helper that returns all the modules included in
     # ActionController::Base except the ones passed as arguments:
     #
@@ -213,21 +200,25 @@ module ActionController
       Renderers::All,
       ConditionalGet,
       EtagWithTemplateDigest,
+      EtagWithFlash,
       Caching,
       MimeResponds,
       ImplicitRender,
       StrongParameters,
-
+      ParameterEncoding,
       Cookies,
       Flash,
       FormBuilder,
       RequestForgeryProtection,
-      ForceSSL,
+      ContentSecurityPolicy,
+      PermissionsPolicy,
       Streaming,
       DataStreaming,
       HttpAuthentication::Basic::ControllerMethods,
       HttpAuthentication::Digest::ControllerMethods,
       HttpAuthentication::Token::ControllerMethods,
+      DefaultHeaders,
+      Logging,
 
       # Before callbacks should also be executed as early as possible, so
       # also include them at the bottom.
@@ -256,10 +247,12 @@ module ActionController
       @_view_renderer @_lookup_context @_routes @_view_runtime @_db_runtime @_helper_proxy
     )
 
-    def _protected_ivars # :nodoc:
+    def _protected_ivars
       PROTECTED_IVARS
     end
+    private :_protected_ivars
 
+    ActiveSupport.run_load_hooks(:action_controller_base, self)
     ActiveSupport.run_load_hooks(:action_controller, self)
   end
 end

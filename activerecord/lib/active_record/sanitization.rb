@@ -1,17 +1,10 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module Sanitization
     extend ActiveSupport::Concern
 
     module ClassMethods
-      # Used to sanitize objects before they're used in an SQL SELECT statement.
-      # Delegates to {connection.quote}[rdoc-ref:ConnectionAdapters::Quoting#quote].
-      def sanitize(object) # :nodoc:
-        connection.quote(object)
-      end
-      alias_method :quote_value, :sanitize
-
-      protected
-
       # Accepts an array or string of SQL conditions and sanitizes
       # them into a valid SQL fragment for a WHERE clause.
       #
@@ -26,6 +19,14 @@ module ActiveRecord
       #
       #   sanitize_sql_for_conditions("name='foo''bar' and group_id='4'")
       #   # => "name='foo''bar' and group_id='4'"
+      #
+      # Note that this sanitization method is not schema-aware, hence won't do any type casting
+      # and will directly use the database adapter's +quote+ method.
+      # For MySQL specifically this means that numeric parameters will be quoted as strings
+      # to prevent query manipulation attacks.
+      #
+      #   sanitize_sql_for_conditions(["role = ?", 0])
+      #   # => "role = '0'"
       def sanitize_sql_for_conditions(condition)
         return nil if condition.blank?
 
@@ -34,8 +35,7 @@ module ActiveRecord
         else        condition
         end
       end
-      alias_method :sanitize_sql, :sanitize_sql_for_conditions
-      alias_method :sanitize_conditions, :sanitize_sql
+      alias :sanitize_sql :sanitize_sql_for_conditions
 
       # Accepts an array, hash, or string of SQL conditions and sanitizes
       # them into a valid SQL fragment for a SET clause.
@@ -46,12 +46,20 @@ module ActiveRecord
       #   sanitize_sql_for_assignment(["name=:name and group_id=:group_id", name: nil, group_id: 4])
       #   # => "name=NULL and group_id=4"
       #
-      #   Post.send(:sanitize_sql_for_assignment, { name: nil, group_id: 4 })
+      #   Post.sanitize_sql_for_assignment({ name: nil, group_id: 4 })
       #   # => "`posts`.`name` = NULL, `posts`.`group_id` = 4"
       #
       #   sanitize_sql_for_assignment("name=NULL and group_id='4'")
       #   # => "name=NULL and group_id='4'"
-      def sanitize_sql_for_assignment(assignments, default_table_name = self.table_name)
+      #
+      # Note that this sanitization method is not schema-aware, hence won't do any type casting
+      # and will directly use the database adapter's +quote+ method.
+      # For MySQL specifically this means that numeric parameters will be quoted as strings
+      # to prevent query manipulation attacks.
+      #
+      #   sanitize_sql_for_assignment(["role = ?", 0])
+      #   # => "role = '0'"
+      def sanitize_sql_for_assignment(assignments, default_table_name = table_name)
         case assignments
         when Array; sanitize_sql_array(assignments)
         when Hash;  sanitize_sql_hash_for_assignment(assignments, default_table_name)
@@ -62,51 +70,28 @@ module ActiveRecord
       # Accepts an array, or string of SQL conditions and sanitizes
       # them into a valid SQL fragment for an ORDER clause.
       #
-      #   sanitize_sql_for_order(["field(id, ?)", [1,3,2]])
+      #   sanitize_sql_for_order([Arel.sql("field(id, ?)"), [1,3,2]])
       #   # => "field(id, 1,3,2)"
       #
       #   sanitize_sql_for_order("id ASC")
       #   # => "id ASC"
       def sanitize_sql_for_order(condition)
-        if condition.is_a?(Array) && condition.first.to_s.include?('?')
-          sanitize_sql_array(condition)
+        if condition.is_a?(Array) && condition.first.to_s.include?("?")
+          disallow_raw_sql!(
+            [condition.first],
+            permit: connection.column_name_with_order_matcher
+          )
+
+          # Ensure we aren't dealing with a subclass of String that might
+          # override methods we use (e.g. Arel::Nodes::SqlLiteral).
+          if condition.first.kind_of?(String) && !condition.first.instance_of?(String)
+            condition = [String.new(condition.first), *condition[1..-1]]
+          end
+
+          Arel.sql(sanitize_sql_array(condition))
         else
           condition
         end
-      end
-
-      # Accepts a hash of SQL conditions and replaces those attributes
-      # that correspond to a {#composed_of}[rdoc-ref:Aggregations::ClassMethods#composed_of]
-      # relationship with their expanded aggregate attribute values.
-      #
-      # Given:
-      #
-      #   class Person < ActiveRecord::Base
-      #     composed_of :address, class_name: "Address",
-      #       mapping: [%w(address_street street), %w(address_city city)]
-      #   end
-      #
-      # Then:
-      #
-      #   { address: Address.new("813 abc st.", "chicago") }
-      #   # => { address_street: "813 abc st.", address_city: "chicago" }
-      def expand_hash_conditions_for_aggregates(attrs)
-        expanded_attrs = {}
-        attrs.each do |attr, value|
-          if aggregation = reflect_on_aggregation(attr.to_sym)
-            mapping = aggregation.mapping
-            mapping.each do |field_attr, aggregate_attr|
-              if mapping.size == 1 && !value.respond_to?(aggregate_attr)
-                expanded_attrs[field_attr] = value
-              else
-                expanded_attrs[field_attr] = value.send(aggregate_attr)
-              end
-            end
-          else
-            expanded_attrs[attr] = value
-          end
-        end
-        expanded_attrs
       end
 
       # Sanitizes a hash of attribute/value pairs into SQL conditions for a SET clause.
@@ -116,28 +101,33 @@ module ActiveRecord
       def sanitize_sql_hash_for_assignment(attrs, table)
         c = connection
         attrs.map do |attr, value|
-          value = type_for_attribute(attr.to_s).serialize(value)
+          type = type_for_attribute(attr)
+          value = type.serialize(type.cast(value))
           "#{c.quote_table_name_for_assignment(table, attr)} = #{c.quote(value)}"
-        end.join(', ')
+        end.join(", ")
       end
 
       # Sanitizes a +string+ so that it is safe to use within an SQL
-      # LIKE statement. This method uses +escape_character+ to escape all occurrences of "\", "_" and "%".
+      # LIKE statement. This method uses +escape_character+ to escape all
+      # occurrences of itself, "_" and "%".
       #
-      #   sanitize_sql_like("100%")
-      #   # => "100\\%"
+      #   sanitize_sql_like("100% true!")
+      #   # => "100\\% true!"
       #
       #   sanitize_sql_like("snake_cased_string")
       #   # => "snake\\_cased\\_string"
       #
-      #   sanitize_sql_like("100%", "!")
-      #   # => "100!%"
+      #   sanitize_sql_like("100% true!", "!")
+      #   # => "100!% true!!"
       #
       #   sanitize_sql_like("snake_cased_string", "!")
       #   # => "snake!_cased!_string"
       def sanitize_sql_like(string, escape_character = "\\")
-        pattern = Regexp.union(escape_character, "%", "_")
-        string.gsub(pattern) { |x| [escape_character, x].join }
+        if string.include?(escape_character) && escape_character != "%" && escape_character != "_"
+          string = string.gsub(escape_character, '\0\0')
+        end
+
+        string.gsub(/(?=[%_])/, escape_character)
       end
 
       # Accepts an array of conditions. The array has each value
@@ -151,11 +141,19 @@ module ActiveRecord
       #
       #   sanitize_sql_array(["name='%s' and group_id='%s'", "foo'bar", 4])
       #   # => "name='foo''bar' and group_id='4'"
+      #
+      # Note that this sanitization method is not schema-aware, hence won't do any type casting
+      # and will directly use the database adapter's +quote+ method.
+      # For MySQL specifically this means that numeric parameters will be quoted as strings
+      # to prevent query manipulation attacks.
+      #
+      #   sanitize_sql_array(["role = ?", 0])
+      #   # => "role = '0'"
       def sanitize_sql_array(ary)
         statement, *values = ary
-        if values.first.is_a?(Hash) && statement =~ /:\w+/
+        if values.first.is_a?(Hash) && /:\w+/.match?(statement)
           replace_named_bind_variables(statement, values.first)
-        elsif statement.include?('?')
+        elsif statement.include?("?")
           replace_bind_variables(statement, values)
         elsif statement.blank?
           statement
@@ -164,57 +162,74 @@ module ActiveRecord
         end
       end
 
-      def replace_bind_variables(statement, values) # :nodoc:
-        raise_if_bind_arity_mismatch(statement, statement.count('?'), values.size)
-        bound = values.dup
-        c = connection
-        statement.gsub(/\?/) do
-          replace_bind_variable(bound.shift, c)
+      def disallow_raw_sql!(args, permit: connection.column_name_matcher) # :nodoc:
+        unexpected = nil
+        args.each do |arg|
+          next if arg.is_a?(Symbol) || Arel.arel_node?(arg) || permit.match?(arg.to_s.strip)
+          (unexpected ||= []) << arg
+        end
+
+        if unexpected
+          raise(ActiveRecord::UnknownAttributeReference,
+            "Dangerous query method (method whose arguments are used as raw " \
+            "SQL) called with non-attribute argument(s): " \
+            "#{unexpected.map(&:inspect).join(", ")}." \
+            "This method should not be called with user-provided values, such as request " \
+            "parameters or model attributes. Known-safe values can be passed " \
+            "by wrapping them in Arel.sql()."
+          )
         end
       end
 
-      def replace_bind_variable(value, c = connection) # :nodoc:
-        if ActiveRecord::Relation === value
-          value.to_sql
-        else
-          quote_bound_value(value, c)
-        end
-      end
-
-      def replace_named_bind_variables(statement, bind_vars) # :nodoc:
-        statement.gsub(/(:?):([a-zA-Z]\w*)/) do |match|
-          if $1 == ':' # skip postgresql casts
-            match # return the whole match
-          elsif bind_vars.include?(match = $2.to_sym)
-            replace_bind_variable(bind_vars[match])
-          else
-            raise PreparedStatementInvalid, "missing value for :#{match} in #{statement}"
+      private
+        def replace_bind_variables(statement, values)
+          raise_if_bind_arity_mismatch(statement, statement.count("?"), values.size)
+          bound = values.dup
+          c = connection
+          statement.gsub(/\?/) do
+            replace_bind_variable(bound.shift, c)
           end
         end
-      end
 
-      def quote_bound_value(value, c = connection) # :nodoc:
-        if value.respond_to?(:map) && !value.acts_like?(:string)
-          if value.respond_to?(:empty?) && value.empty?
-            c.quote(nil)
+        def replace_bind_variable(value, c = connection)
+          if ActiveRecord::Relation === value
+            value.to_sql
           else
-            value.map { |v| c.quote(v) }.join(',')
+            quote_bound_value(value, c)
           end
-        else
-          c.quote(value)
         end
-      end
 
-      def raise_if_bind_arity_mismatch(statement, expected, provided) # :nodoc:
-        unless expected == provided
-          raise PreparedStatementInvalid, "wrong number of bind variables (#{provided} for #{expected}) in: #{statement}"
+        def replace_named_bind_variables(statement, bind_vars)
+          statement.gsub(/(:?):([a-zA-Z]\w*)/) do |match|
+            if $1 == ":" # skip postgresql casts
+              match # return the whole match
+            elsif bind_vars.include?(match = $2.to_sym)
+              replace_bind_variable(bind_vars[match])
+            else
+              raise PreparedStatementInvalid, "missing value for :#{match} in #{statement}"
+            end
+          end
         end
-      end
-    end
 
-    # TODO: Deprecate this
-    def quoted_id # :nodoc:
-      self.class.quote_value(@attributes[self.class.primary_key].value_for_database)
+        def quote_bound_value(value, c = connection)
+          if value.respond_to?(:map) && !value.acts_like?(:string)
+            values = value.map { |v| v.respond_to?(:id_for_database) ? v.id_for_database : v }
+            if values.empty?
+              c.quote_bound_value(nil)
+            else
+              values.map! { |v| c.quote_bound_value(v) }.join(",")
+            end
+          else
+            value = value.id_for_database if value.respond_to?(:id_for_database)
+            c.quote_bound_value(value)
+          end
+        end
+
+        def raise_if_bind_arity_mismatch(statement, expected, provided)
+          unless expected == provided
+            raise PreparedStatementInvalid, "wrong number of bind variables (#{provided} for #{expected}) in: #{statement}"
+          end
+        end
     end
   end
 end

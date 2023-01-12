@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class String
   # Returns the string, first removing all whitespace on both ends of
   # the string, and then changing remaining consecutive whitespace
@@ -17,7 +19,7 @@ class String
   #   str.squish!                         # => "foo bar boo"
   #   str                                 # => "foo bar boo"
   def squish!
-    gsub!(/[[:space:]]+/, ' ')
+    gsub!(/[[:space:]]+/, " ")
     strip!
     self
   end
@@ -64,7 +66,7 @@ class String
   def truncate(truncate_at, options = {})
     return dup unless length > truncate_at
 
-    omission = options[:omission] || '...'
+    omission = options[:omission] || "..."
     length_with_room_for_omission = truncate_at - omission.length
     stop = \
       if options[:separator]
@@ -73,7 +75,48 @@ class String
         length_with_room_for_omission
       end
 
-    "#{self[0, stop]}#{omission}"
+    +"#{self[0, stop]}#{omission}"
+  end
+
+  # Truncates +text+ to at most <tt>bytesize</tt> bytes in length without
+  # breaking string encoding by splitting multibyte characters or breaking
+  # grapheme clusters ("perceptual characters") by truncating at combining
+  # characters.
+  #
+  #   >> "🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪".size
+  #   => 20
+  #   >> "🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪".bytesize
+  #   => 80
+  #   >> "🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪🔪".truncate_bytes(20)
+  #   => "🔪🔪🔪🔪…"
+  #
+  # The truncated text ends with the <tt>:omission</tt> string, defaulting
+  # to "…", for a total length not exceeding <tt>bytesize</tt>.
+  def truncate_bytes(truncate_at, omission: "…")
+    omission ||= ""
+
+    case
+    when bytesize <= truncate_at
+      dup
+    when omission.bytesize > truncate_at
+      raise ArgumentError, "Omission #{omission.inspect} is #{omission.bytesize}, larger than the truncation length of #{truncate_at} bytes"
+    when omission.bytesize == truncate_at
+      omission.dup
+    else
+      self.class.new.tap do |cut|
+        cut_at = truncate_at - omission.bytesize
+
+        each_grapheme_cluster do |grapheme|
+          if cut.bytesize + grapheme.bytesize <= cut_at
+            cut << grapheme
+          else
+            break
+          end
+        end
+
+        cut << omission
+      end
+    end
   end
 
   # Truncates a given +text+ after a given number of words (<tt>words_count</tt>):
@@ -94,7 +137,7 @@ class String
     sep = options[:separator] || /\s+/
     sep = Regexp.escape(sep.to_s) unless Regexp === sep
     if self =~ /\A((?>.+?#{sep}){#{words_count - 1}}.+?)#{sep}.*/m
-      $1 + (options[:omission] || '...')
+      $1 + (options[:omission] || "...")
     else
       dup
     end

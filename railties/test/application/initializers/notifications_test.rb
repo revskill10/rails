@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "isolation/abstract_unit"
 
 module ApplicationTests
@@ -30,6 +32,7 @@ module ApplicationTests
 
       logger = ActiveSupport::LogSubscriber::TestHelper::MockLogger.new
       ActiveRecord::Base.logger = logger
+      ActiveRecord.verbose_query_logs = false
 
       # Mimic Active Record notifications
       instrument "sql.active_record", name: "SQL", sql: "SHOW tables"
@@ -39,17 +42,17 @@ module ApplicationTests
       assert_match(/SHOW tables/, logger.logged(:debug).last)
     end
 
-    test 'rails load_config_initializer event is instrumented' do
-      app_file 'config/initializers/foo.rb', ''
+    test "rails load_config_initializer event is instrumented" do
+      app_file "config/initializers/foo.rb", ""
 
       events = []
       callback = ->(*_) { events << _ }
-      ActiveSupport::Notifications.subscribed(callback, 'load_config_initializer.railties') do
+      ActiveSupport::Notifications.subscribed(callback, "load_config_initializer.railties") do
         app
       end
 
       assert_equal %w[load_config_initializer.railties], events.map(&:first)
-      assert_includes events.first.last[:initializer], 'config/initializers/foo.rb'
+      assert_includes events.first.last[:initializer], "config/initializers/foo.rb"
     end
   end
 end

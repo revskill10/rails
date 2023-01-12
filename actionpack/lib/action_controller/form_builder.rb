@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module ActionController
   # Override the default form builder for all views rendered by this
   # controller and any of its descendants. Accepts a subclass of
-  # +ActionView::Helpers::FormBuilder+.
+  # ActionView::Helpers::FormBuilder.
   #
   # For example, given a form builder:
   #
@@ -34,7 +36,7 @@ module ActionController
       # in the views rendered by this controller and its subclasses.
       #
       # ==== Parameters
-      # * <tt>builder</tt> - Default form builder, an instance of +ActionView::Helpers::FormBuilder+
+      # * <tt>builder</tt> - Default form builder, an instance of ActionView::Helpers::FormBuilder
       def default_form_builder(builder)
         self._default_form_builder = builder
       end

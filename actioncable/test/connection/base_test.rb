@@ -1,6 +1,8 @@
-require 'test_helper'
-require 'stubs/test_server'
-require 'active_support/core_ext/object/json'
+# frozen_string_literal: true
+
+require "test_helper"
+require "stubs/test_server"
+require "active_support/core_ext/object/json"
 
 class ActionCable::Connection::BaseTest < ActionCable::TestCase
   class Connection < ActionCable::Connection::Base
@@ -37,10 +39,10 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
       connection = open_connection
       connection.process
 
-      assert connection.websocket.possible?
+      assert_predicate connection.websocket, :possible?
 
       wait_for_async
-      assert connection.websocket.alive?
+      assert_predicate connection.websocket, :alive?
     end
   end
 
@@ -57,11 +59,12 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
     run_in_eventmachine do
       connection = open_connection
 
-      connection.websocket.expects(:transmit).with({ type: "welcome" }.to_json)
-      connection.message_buffer.expects(:process!)
-
-      connection.process
-      wait_for_async
+      assert_called_with(connection.websocket, :transmit, [{ type: "welcome" }.to_json]) do
+        assert_called(connection.message_buffer, :process!) do
+          connection.process
+          wait_for_async
+        end
+      end
 
       assert_equal [ connection ], @server.connections
       assert connection.connected
@@ -73,15 +76,15 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
       connection = open_connection
       connection.process
 
-      # Setup the connection
-      connection.server.stubs(:timer).returns(true)
+      # Set up the connection
       connection.send :handle_open
       assert connection.connected
 
-      connection.subscriptions.expects(:unsubscribe_from_all)
-      connection.send :handle_close
+      assert_called(connection.subscriptions, :unsubscribe_from_all) do
+        connection.send :handle_close
+      end
 
-      assert ! connection.connected
+      assert_not connection.connected
       assert_equal [], @server.connections
     end
   end
@@ -93,7 +96,7 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
 
       statistics = connection.statistics
 
-      assert statistics[:identifier].blank?
+      assert_predicate statistics[:identifier], :blank?
       assert_kind_of Time, statistics[:started_at]
       assert_equal [], statistics[:subscriptions]
     end
@@ -104,8 +107,9 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
       connection = open_connection
       connection.process
 
-      connection.websocket.expects(:close)
-      connection.close
+      assert_called(connection.websocket, :close) do
+        connection.close(reason: "testing")
+      end
     end
   end
 
@@ -113,14 +117,14 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
     run_in_eventmachine do
       class CallMeMaybe
         def call(*)
-          raise 'Do not call me!'
+          raise "Do not call me!"
         end
       end
 
       env = Rack::MockRequest.env_for(
         "/test",
-        { 'HTTP_CONNECTION' => 'upgrade', 'HTTP_UPGRADE' => 'websocket',
-          'HTTP_HOST' => 'localhost', 'HTTP_ORIGIN' => 'http://rubyonrails.org', 'rack.hijack' => CallMeMaybe.new }
+        "HTTP_CONNECTION" => "upgrade", "HTTP_UPGRADE" => "websocket",
+          "HTTP_HOST" => "localhost", "HTTP_ORIGIN" => "http://rubyonrails.org", "rack.hijack" => CallMeMaybe.new
       )
 
       connection = ActionCable::Connection::Base.new(@server, env)
@@ -131,8 +135,8 @@ class ActionCable::Connection::BaseTest < ActionCable::TestCase
 
   private
     def open_connection
-      env = Rack::MockRequest.env_for "/test", 'HTTP_CONNECTION' => 'upgrade', 'HTTP_UPGRADE' => 'websocket',
-        'HTTP_HOST' => 'localhost', 'HTTP_ORIGIN' => 'http://rubyonrails.com'
+      env = Rack::MockRequest.env_for "/test", "HTTP_CONNECTION" => "upgrade", "HTTP_UPGRADE" => "websocket",
+        "HTTP_HOST" => "localhost", "HTTP_ORIGIN" => "http://rubyonrails.com"
 
       Connection.new(@server, env)
     end

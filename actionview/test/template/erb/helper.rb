@@ -1,7 +1,8 @@
+# frozen_string_literal: true
+
 module ERBTest
   class ViewContext
     include ActionView::Helpers::UrlHelper
-    include SharedTestRoutes.url_helpers
     include ActionView::Helpers::TagHelper
     include ActionView::Helpers::JavaScriptHelper
     include ActionView::Helpers::FormHelper
@@ -12,9 +13,25 @@ module ERBTest
   end
 
   class BlockTestCase < ActiveSupport::TestCase
-    def render_content(start, inside)
-      template = block_helper(start, inside)
-      ActionView::Template::Handlers::Erubis.new(template).evaluate(ViewContext.new)
+    class Context < ActionView::Base
+    end
+
+    def render_content(start, inside, routes = nil)
+      routes ||= ActionDispatch::Routing::RouteSet.new.tap do |rs|
+        rs.draw { }
+      end
+
+      view = Class.new(Context)
+      view.include routes.url_helpers
+
+      ActionView::Template.new(
+        block_helper(start, inside),
+        "test#{rand}",
+        ActionView::Template::Handlers::ERB.new,
+        virtual_path: "partial",
+        format: :html,
+        locals: []
+      ).render(view.with_empty_template_cache.empty, {})
     end
 
     def block_helper(str, rest)

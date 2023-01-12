@@ -1,6 +1,9 @@
+# frozen_string_literal: true
+
 require "active_support"
-require "active_support/file_update_checker"
 require "active_support/core_ext/array/wrap"
+
+# :enddoc:
 
 module I18n
   class Railtie < Rails::Railtie
@@ -8,6 +11,8 @@ module I18n
     config.i18n.railties_load_path = []
     config.i18n.load_path = []
     config.i18n.fallbacks = ActiveSupport::OrderedOptions.new
+
+    config.eager_load_namespaces << I18n
 
     # Set the i18n configuration after initialization since a lot of
     # configuration is still usually done in application initializers.
@@ -20,8 +25,6 @@ module I18n
     config.before_eager_load do |app|
       I18n::Railtie.initialize_i18n(app)
     end
-
-  protected
 
     @i18n_inited = false
 
@@ -42,11 +45,13 @@ module I18n
         case setting
         when :railties_load_path
           reloadable_paths = value
-          app.config.i18n.load_path.unshift(*value.map(&:existent).flatten)
+          app.config.i18n.load_path.unshift(*value.flat_map(&:existent))
         when :load_path
           I18n.load_path += value
+        when :raise_on_missing_translations
+          forward_raise_on_missing_translations_config(app)
         else
-          I18n.send("#{setting}=", value)
+          I18n.public_send("#{setting}=", value)
         end
       end
 
@@ -55,25 +60,31 @@ module I18n
       # Restore available locales check so it will take place from now on.
       I18n.enforce_available_locales = enforce_available_locales
 
-      directories = watched_dirs_with_extensions(reloadable_paths)
-      reloader = app.config.file_watcher.new(I18n.load_path.dup, directories) do
-        I18n.load_path.keep_if { |p| File.exist?(p) }
-        I18n.load_path |= reloadable_paths.map(&:existent).flatten
+      if app.config.reloading_enabled?
+        directories = watched_dirs_with_extensions(reloadable_paths)
+        reloader = app.config.file_watcher.new(I18n.load_path.dup, directories) do
+          I18n.load_path.keep_if { |p| File.exist?(p) }
+          I18n.load_path |= reloadable_paths.flat_map(&:existent)
+        end
 
-        I18n.reload!
+        app.reloaders << reloader
+        app.reloader.to_run do
+          reloader.execute_if_updated { require_unload_lock! }
+        end
+        reloader.execute
       end
-
-      app.reloaders << reloader
-      app.reloader.to_run do
-        reloader.execute_if_updated { require_unload_lock! }
-        # TODO: remove the following line as soon as the return value of
-        # callbacks is ignored, that is, returning `false` does not
-        # display a deprecation warning or halts the callback chain.
-        true
-      end
-      reloader.execute
 
       @i18n_inited = true
+    end
+
+    def self.forward_raise_on_missing_translations_config(app)
+      ActiveSupport.on_load(:action_view) do
+        ActionView::Helpers::TranslationHelper.raise_on_missing_translations = app.config.i18n.raise_on_missing_translations
+      end
+
+      ActiveSupport.on_load(:action_controller) do
+        AbstractController::Translation.raise_on_missing_translations = app.config.i18n.raise_on_missing_translations
+      end
     end
 
     def self.include_fallbacks_module
@@ -83,14 +94,15 @@ module I18n
     def self.init_fallbacks(fallbacks)
       include_fallbacks_module
 
-      args = case fallbacks
-      when ActiveSupport::OrderedOptions
-        [*(fallbacks[:defaults] || []) << fallbacks[:map]].compact
-      when Hash, Array
-        Array.wrap(fallbacks)
-      else # TrueClass
-        []
-      end
+      args = \
+        case fallbacks
+        when ActiveSupport::OrderedOptions
+          [*(fallbacks[:defaults] || []) << fallbacks[:map]].compact
+        when Hash, Array
+          Array.wrap(fallbacks)
+        else # TrueClass
+          [I18n.default_locale]
+        end
 
       I18n.fallbacks = I18n::Locale::Fallbacks.new(*args)
     end

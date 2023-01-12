@@ -1,9 +1,12 @@
-require 'time'
-require 'base64'
-require 'bigdecimal'
-require 'active_support/core_ext/module/delegation'
-require 'active_support/core_ext/string/inflections'
-require 'active_support/core_ext/date_time/calculations'
+# frozen_string_literal: true
+
+require "time"
+require "base64"
+require "bigdecimal"
+require "bigdecimal/util"
+require "active_support/core_ext/module/delegation"
+require "active_support/core_ext/string/inflections"
+require "active_support/core_ext/date_time/calculations"
 
 module ActiveSupport
   # = XmlMini
@@ -16,15 +19,15 @@ module ActiveSupport
 
     # This module decorates files deserialized using Hash.from_xml with
     # the <tt>original_filename</tt> and <tt>content_type</tt> methods.
-    module FileLike #:nodoc:
+    module FileLike # :nodoc:
       attr_writer :original_filename, :content_type
 
       def original_filename
-        @original_filename || 'untitled'
+        @original_filename || "untitled"
       end
 
       def content_type
-        @content_type || 'application/octet-stream'
+        @content_type || "application/octet-stream"
       end
     end
 
@@ -46,15 +49,12 @@ module ActiveSupport
         "Array"      => "array",
         "Hash"       => "hash"
       }
-
-      # No need to map these on Ruby 2.4+
-      TYPE_NAMES["Fixnum"] = "integer" unless Fixnum == Integer
-      TYPE_NAMES["Bignum"] = "integer" unless Bignum == Integer
     end
+    TYPE_NAMES["ActiveSupport::TimeWithZone"] = TYPE_NAMES["Time"]
 
     FORMATTING = {
       "symbol"   => Proc.new { |symbol| symbol.to_s },
-      "date"     => Proc.new { |date| date.to_s(:db) },
+      "date"     => Proc.new { |date| date.to_fs(:db) },
       "dateTime" => Proc.new { |time| time.xmlschema },
       "binary"   => Proc.new { |binary| ::Base64.encode64(binary) },
       "yaml"     => Proc.new { |yaml| yaml.to_yaml }
@@ -68,10 +68,16 @@ module ActiveSupport
         "datetime"     => Proc.new { |time|    Time.xmlschema(time).utc rescue ::DateTime.parse(time).utc },
         "integer"      => Proc.new { |integer| integer.to_i },
         "float"        => Proc.new { |float|   float.to_f },
-        "decimal"      => Proc.new { |number|  BigDecimal(number) },
+        "decimal"      => Proc.new do |number|
+          if String === number
+            number.to_d
+          else
+            BigDecimal(number)
+          end
+        end,
         "boolean"      => Proc.new { |boolean| %w(1 true).include?(boolean.to_s.strip) },
         "string"       => Proc.new { |string|  string.to_s },
-        "yaml"         => Proc.new { |yaml|    YAML::load(yaml) rescue yaml },
+        "yaml"         => Proc.new { |yaml|    YAML.load(yaml) rescue yaml },
         "base64Binary" => Proc.new { |bin|     ::Base64.decode64(bin) },
         "binary"       => Proc.new { |bin, entity| _parse_binary(bin, entity) },
         "file"         => Proc.new { |file, entity| _parse_file(file, entity) }
@@ -86,7 +92,7 @@ module ActiveSupport
     attr_accessor :depth
     self.depth = 100
 
-    delegate :parse, :to => :backend
+    delegate :parse, to: :backend
 
     def backend
       current_thread_backend || @backend
@@ -108,7 +114,7 @@ module ActiveSupport
 
     def to_tag(key, value, options)
       type_name = options.delete(:type)
-      merged_options = options.merge(:root => key, :skip_instruct => true)
+      merged_options = options.merge(root: key, skip_instruct: true)
 
       if value.is_a?(::Method) || value.is_a?(::Proc)
         if value.arity == 1
@@ -126,7 +132,7 @@ module ActiveSupport
 
         key = rename_key(key.to_s, options)
 
-        attributes = options[:skip_types] || type_name.nil? ? { } : { :type => type_name }
+        attributes = options[:skip_types] || type_name.nil? ? {} : { type: type_name }
         attributes[:nil] = true if value.nil?
 
         encoding = options[:encoding] || DEFAULT_ENCODINGS[type_name]
@@ -149,40 +155,37 @@ module ActiveSupport
       key
     end
 
-    protected
-
-    def _dasherize(key)
-      # $2 must be a non-greedy regex for this to work
-      left, middle, right = /\A(_*)(.*?)(_*)\Z/.match(key.strip)[1,3]
-      "#{left}#{middle.tr('_ ', '--')}#{right}"
-    end
-
-    # TODO: Add support for other encodings
-    def _parse_binary(bin, entity) #:nodoc:
-      case entity['encoding']
-      when 'base64'
-        ::Base64.decode64(bin)
-      else
-        bin
-      end
-    end
-
-    def _parse_file(file, entity)
-      f = StringIO.new(::Base64.decode64(file))
-      f.extend(FileLike)
-      f.original_filename = entity['name']
-      f.content_type = entity['content_type']
-      f
-    end
-
     private
+      def _dasherize(key)
+        # $2 must be a non-greedy regex for this to work
+        left, middle, right = /\A(_*)(.*?)(_*)\Z/.match(key.strip)[1, 3]
+        "#{left}#{middle.tr('_ ', '--')}#{right}"
+      end
+
+      # TODO: Add support for other encodings
+      def _parse_binary(bin, entity)
+        case entity["encoding"]
+        when "base64"
+          ::Base64.decode64(bin)
+        else
+          bin
+        end
+      end
+
+      def _parse_file(file, entity)
+        f = StringIO.new(::Base64.decode64(file))
+        f.extend(FileLike)
+        f.original_filename = entity["name"]
+        f.content_type = entity["content_type"]
+        f
+      end
 
       def current_thread_backend
-        Thread.current[:xml_mini_backend]
+        IsolatedExecutionState[:xml_mini_backend]
       end
 
       def current_thread_backend=(name)
-        Thread.current[:xml_mini_backend] = name && cast_backend_name_to_module(name)
+        IsolatedExecutionState[:xml_mini_backend] = name && cast_backend_name_to_module(name)
       end
 
       def cast_backend_name_to_module(name)
@@ -195,5 +198,5 @@ module ActiveSupport
       end
   end
 
-  XmlMini.backend = 'REXML'
+  XmlMini.backend = "REXML"
 end

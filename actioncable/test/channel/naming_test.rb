@@ -1,6 +1,8 @@
-require 'test_helper'
+# frozen_string_literal: true
 
-class ActionCable::Channel::NamingTest < ActiveSupport::TestCase
+require "test_helper"
+
+class ActionCable::Channel::NamingTest < ActionCable::TestCase
   class ChatChannel < ActionCable::Channel::Base
   end
 

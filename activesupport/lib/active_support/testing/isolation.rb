@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 module ActiveSupport
   module Testing
     module Isolation
-      require 'thread'
+      require "thread"
 
-      def self.included(klass) #:nodoc:
+      def self.included(klass) # :nodoc:
         klass.class_eval do
           parallelize_me!
         end
@@ -23,68 +25,73 @@ module ActiveSupport
 
       module Forking
         def run_in_isolation(&blk)
-          read, write = IO.pipe
-          read.binmode
-          write.binmode
+          IO.pipe do |read, write|
+            read.binmode
+            write.binmode
 
-          pid = fork do
-            read.close
-            yield
-            begin
-              if error?
-                failures.map! { |e|
-                  begin
-                    Marshal.dump e
-                    e
-                  rescue TypeError
-                    ex = Exception.new e.message
-                    ex.set_backtrace e.backtrace
-                    Minitest::UnexpectedError.new ex
-                  end
-                }
+            pid = fork do
+              read.close
+              yield
+              begin
+                if error?
+                  failures.map! { |e|
+                    begin
+                      Marshal.dump e
+                      e
+                    rescue TypeError
+                      ex = Exception.new e.message
+                      ex.set_backtrace e.backtrace
+                      Minitest::UnexpectedError.new ex
+                    end
+                  }
+                end
+                test_result = defined?(Minitest::Result) ? Minitest::Result.from(self) : dup
+                result = Marshal.dump(test_result)
               end
-              result = Marshal.dump(self.dup)
+
+              write.puts [result].pack("m")
+              exit!
             end
 
-            write.puts [result].pack("m")
-            exit!
+            write.close
+            result = read.read
+            Process.wait2(pid)
+            result.unpack1("m")
           end
-
-          write.close
-          result = read.read
-          Process.wait2(pid)
-          return result.unpack("m")[0]
         end
       end
 
       module Subprocess
         ORIG_ARGV = ARGV.dup unless defined?(ORIG_ARGV)
 
-        # Crazy H4X to get this working in windows / jruby with
+        # Complicated H4X to get this working in Windows / JRuby with
         # no forking.
         def run_in_isolation(&blk)
           require "tempfile"
 
           if ENV["ISOLATION_TEST"]
             yield
+            test_result = defined?(Minitest::Result) ? Minitest::Result.from(self) : dup
             File.open(ENV["ISOLATION_OUTPUT"], "w") do |file|
-              file.puts [Marshal.dump(self.dup)].pack("m")
+              file.puts [Marshal.dump(test_result)].pack("m")
             end
             exit!
           else
             Tempfile.open("isolation") do |tmpfile|
               env = {
-                'ISOLATION_TEST' => self.class.name,
-                'ISOLATION_OUTPUT' => tmpfile.path
+                "ISOLATION_TEST" => self.class.name,
+                "ISOLATION_OUTPUT" => tmpfile.path
               }
 
-              load_paths = $-I.map {|p| "-I\"#{File.expand_path(p)}\"" }.join(" ")
-              orig_args = ORIG_ARGV.join(" ")
-              test_opts = "-n#{self.class.name}##{self.name}"
-              command = "#{Gem.ruby} #{load_paths} #{$0} '#{orig_args}' #{test_opts}"
+              test_opts = "-n#{self.class.name}##{name}"
 
-              # IO.popen lets us pass env in a cross-platform way
-              child = IO.popen(env, command)
+              load_path_args = []
+              $-I.each do |p|
+                load_path_args << "-I"
+                load_path_args << File.expand_path(p)
+              end
+
+              child = IO.popen([env, Gem.ruby, *load_path_args, $0, *ORIG_ARGV, test_opts])
 
               begin
                 Process.wait(child.pid)
@@ -92,7 +99,7 @@ module ActiveSupport
                 nil
               end
 
-              return tmpfile.read.unpack("m")[0]
+              return tmpfile.read.unpack1("m")
             end
           end
         end

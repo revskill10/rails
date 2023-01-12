@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionDispatch
   module Assertions
     # A small suite of assertions that test responses from \Rails applications.
@@ -18,7 +20,7 @@ module ActionDispatch
       #
       # You can also pass an explicit status number like <tt>assert_response(501)</tt>
       # or its symbolic equivalent <tt>assert_response(:not_implemented)</tt>.
-      # See Rack::Utils::SYMBOL_TO_STATUS_CODE for a full list.
+      # See +Rack::Utils::SYMBOL_TO_STATUS_CODE+ for a full list.
       #
       #   # Asserts that the response was a redirection
       #   assert_response :redirect
@@ -28,16 +30,14 @@ module ActionDispatch
       def assert_response(type, message = nil)
         message ||= generate_response_message(type)
 
-        if RESPONSE_PREDICATES.keys.include?(type)
-          assert @response.send(RESPONSE_PREDICATES[type]), message
+        if RESPONSE_PREDICATES.key?(type)
+          assert @response.public_send(RESPONSE_PREDICATES[type]), message
         else
           assert_equal AssertionResponse.new(type).code, @response.response_code, message
         end
       end
 
-      # Asserts that the redirection options passed in match those of the redirect called in the latest action.
-      # This match can be partial, such that <tt>assert_redirected_to(controller: "weblog")</tt> will also
-      # match the redirection of <tt>redirect_to(controller: "weblog", action: "show")</tt> and so on.
+      # Asserts that the response is a redirect to a URL matching the given options.
       #
       #   # Asserts that the redirection was to the "index" action on the WeblogController
       #   assert_redirected_to controller: "weblog", action: "index"
@@ -45,17 +45,24 @@ module ActionDispatch
       #   # Asserts that the redirection was to the named route login_url
       #   assert_redirected_to login_url
       #
-      #   # Asserts that the redirection was to the url for @customer
+      #   # Asserts that the redirection was to the URL for @customer
       #   assert_redirected_to @customer
       #
       #   # Asserts that the redirection matches the regular expression
       #   assert_redirected_to %r(\Ahttp://example.org)
-      def assert_redirected_to(options = {}, message=nil)
-        assert_response(:redirect, message)
-        return true if options === @response.location
+      #
+      #   # Asserts that the redirection has the HTTP status code 301 (Moved
+      #   # Permanently).
+      #   assert_redirected_to "/some/path", status: :moved_permanently
+      def assert_redirected_to(url_options = {}, options = {}, message = nil)
+        options, message = {}, options unless options.is_a?(Hash)
+
+        status = options[:status] || :redirect
+        assert_response(status, message)
+        return true if url_options === @response.location
 
         redirect_is       = normalize_argument_to_redirection(@response.location)
-        redirect_expected = normalize_argument_to_redirection(options)
+        redirect_expected = normalize_argument_to_redirection(url_options)
 
         message ||= "Expected response to be a redirect to <#{redirect_expected}> but was a redirect to <#{redirect_is}>"
         assert_operator redirect_expected, :===, redirect_is, message
@@ -77,19 +84,23 @@ module ActionDispatch
         end
 
         def generate_response_message(expected, actual = @response.response_code)
-          "Expected response to be a <#{code_with_name(expected)}>,"\
-          " but was a <#{code_with_name(actual)}>"
-          .concat location_if_redirected
+          (+"Expected response to be a <#{code_with_name(expected)}>,"\
+          " but was a <#{code_with_name(actual)}>").concat(location_if_redirected).concat(response_body_if_short)
+        end
+
+        def response_body_if_short
+          return "" if @response.body.size > 500
+          "\nResponse body: #{@response.body}"
         end
 
         def location_if_redirected
-          return '' unless @response.redirection? && @response.location.present?
+          return "" unless @response.redirection? && @response.location.present?
           location = normalize_argument_to_redirection(@response.location)
           " redirect to <#{location}>"
         end
 
         def code_with_name(code_or_name)
-          if RESPONSE_PREDICATES.values.include?("#{code_or_name}?".to_sym)
+          if RESPONSE_PREDICATES.value?("#{code_or_name}?".to_sym)
             code_or_name = RESPONSE_PREDICATES.invert["#{code_or_name}?".to_sym]
           end
 

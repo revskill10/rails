@@ -1,5 +1,7 @@
+# frozen_string_literal: true
+
 #--
-# Copyright (c) 2005-2016 David Heinemeier Hansson
+# Copyright (c) 2005-2022 David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -21,9 +23,10 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
 
-require 'securerandom'
+require "securerandom"
 require "active_support/dependencies/autoload"
 require "active_support/version"
+require "active_support/deprecator"
 require "active_support/logger"
 require "active_support/lazy_load_hooks"
 require "active_support/core_ext/date_and_time/compatibility"
@@ -32,15 +35,24 @@ module ActiveSupport
   extend ActiveSupport::Autoload
 
   autoload :Concern
+  autoload :CodeGenerator
+  autoload :ActionableError
+  autoload :ConfigurationFile
+  autoload :CurrentAttributes
   autoload :Dependencies
   autoload :DescendantsTracker
   autoload :ExecutionWrapper
   autoload :Executor
+  autoload :ErrorReporter
   autoload :FileUpdateChecker
   autoload :EventedFileUpdateChecker
+  autoload :ForkTracker
   autoload :LogSubscriber
+  autoload :IsolatedExecutionState
   autoload :Notifications
   autoload :Reloader
+  autoload :PerThreadRegistry
+  autoload :SecureCompareRotator
 
   eager_autoload do
     autoload :BacktraceCleaner
@@ -50,18 +62,24 @@ module ActiveSupport
     autoload :Callbacks
     autoload :Configurable
     autoload :Deprecation
+    autoload :Digest
+    autoload :ExecutionContext
     autoload :Gzip
     autoload :Inflector
     autoload :JSON
+    autoload :JsonWithMarshalFallback
     autoload :KeyGenerator
     autoload :MessageEncryptor
+    autoload :MessageEncryptors
     autoload :MessageVerifier
+    autoload :MessageVerifiers
     autoload :Multibyte
     autoload :NumberHelper
     autoload :OptionMerger
     autoload :OrderedHash
     autoload :OrderedOptions
     autoload :StringInquirer
+    autoload :EnvironmentInquirer
     autoload :TaggedLogging
     autoload :XmlMini
     autoload :ArrayInquirer
@@ -78,13 +96,17 @@ module ActiveSupport
   end
 
   cattr_accessor :test_order # :nodoc:
+  cattr_accessor :test_parallelization_threshold, default: 50 # :nodoc:
 
-  def self.halt_callback_chains_on_return_false
-    Callbacks.halt_and_display_warning_on_return_false
+  @error_reporter = ActiveSupport::ErrorReporter.new
+  singleton_class.attr_accessor :error_reporter # :nodoc:
+
+  def self.cache_format_version
+    Cache.format_version
   end
 
-  def self.halt_callback_chains_on_return_false=(value)
-    Callbacks.halt_and_display_warning_on_return_false = value
+  def self.cache_format_version=(value)
+    Cache.format_version = value
   end
 
   def self.to_time_preserves_timezone
@@ -92,7 +114,21 @@ module ActiveSupport
   end
 
   def self.to_time_preserves_timezone=(value)
+    unless value
+      ActiveSupport.deprecator.warn(
+        "Support for the pre-Ruby 2.4 behavior of to_time has been deprecated and will be removed in Rails 7.2."
+      )
+    end
+
     DateAndTime::Compatibility.preserve_timezone = value
+  end
+
+  def self.utc_to_local_returns_utc_offset_times
+    DateAndTime::Compatibility.utc_to_local_returns_utc_offset_times
+  end
+
+  def self.utc_to_local_returns_utc_offset_times=(value)
+    DateAndTime::Compatibility.utc_to_local_returns_utc_offset_times = value
   end
 end
 

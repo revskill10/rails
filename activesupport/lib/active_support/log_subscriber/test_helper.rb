@@ -1,6 +1,8 @@
-require 'active_support/log_subscriber'
-require 'active_support/logger'
-require 'active_support/notifications'
+# frozen_string_literal: true
+
+require "active_support/log_subscriber"
+require "active_support/logger"
+require "active_support/notifications"
 
 module ActiveSupport
   class LogSubscriber
@@ -25,13 +27,13 @@ module ActiveSupport
     #
     # All you need to do is to ensure that your log subscriber is added to
     # Rails::Subscriber, as in the second line of the code above. The test
-    # helpers are responsible for setting up the queue, subscriptions and
+    # helpers are responsible for setting up the queue and subscriptions, and
     # turning colors in logs off.
     #
     # The messages are available in the @logger instance, which is a logger with
     # limited powers (it actually does not send anything to your output), and
     # you can collect them doing @logger.logged(level), where level is the level
-    # used in logging, like info, debug, warn and so on.
+    # used in logging, like info, debug, warn, and so on.
     module TestHelper
       def setup # :nodoc:
         @logger   = MockLogger.new
@@ -58,15 +60,15 @@ module ActiveSupport
         def initialize(level = DEBUG)
           @flush_count = 0
           @level = level
-          @logged = Hash.new { |h,k| h[k] = [] }
+          @logged = Hash.new { |h, k| h[k] = [] }
         end
 
         def method_missing(level, message = nil)
-           if block_given?
-             @logged[level] << yield
-           else
-             @logged[level] << message
-           end
+          if block_given?
+            @logged[level] << yield
+          else
+            @logged[level] << message
+          end
         end
 
         def logged(level)

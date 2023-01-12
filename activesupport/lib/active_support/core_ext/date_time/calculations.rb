@@ -1,4 +1,6 @@
-require 'date'
+# frozen_string_literal: true
+
+require "date"
 
 class DateTime
   class << self
@@ -47,13 +49,23 @@ class DateTime
   #   DateTime.new(2012, 8, 29, 22, 35, 0).change(year: 1981, day: 1)  # => DateTime.new(1981, 8, 1, 22, 35, 0)
   #   DateTime.new(2012, 8, 29, 22, 35, 0).change(year: 1981, hour: 0) # => DateTime.new(1981, 8, 29, 0, 0, 0)
   def change(options)
+    if new_nsec = options[:nsec]
+      raise ArgumentError, "Can't change both :nsec and :usec at the same time: #{options.inspect}" if options[:usec]
+      new_fraction = Rational(new_nsec, 1000000000)
+    else
+      new_usec = options.fetch(:usec, (options[:hour] || options[:min] || options[:sec]) ? 0 : Rational(nsec, 1000))
+      new_fraction = Rational(new_usec, 1000000)
+    end
+
+    raise ArgumentError, "argument out of range" if new_fraction >= 1
+
     ::DateTime.civil(
       options.fetch(:year, year),
       options.fetch(:month, month),
       options.fetch(:day, day),
       options.fetch(:hour, hour),
       options.fetch(:min, options[:hour] ? 0 : min),
-      options.fetch(:sec, (options[:hour] || options[:min]) ? 0 : sec + sec_fraction),
+      options.fetch(:sec, (options[:hour] || options[:min]) ? 0 : sec) + new_fraction,
       options.fetch(:offset, offset),
       options.fetch(:start, start)
     )
@@ -63,6 +75,10 @@ class DateTime
   # The +options+ parameter takes a hash with any of these keys: <tt>:years</tt>,
   # <tt>:months</tt>, <tt>:weeks</tt>, <tt>:days</tt>, <tt>:hours</tt>,
   # <tt>:minutes</tt>, <tt>:seconds</tt>.
+  #
+  # Just like Date#advance, increments are applied in order of time units from
+  # largest to smallest. This order can affect the result around the end of a
+  # month.
   def advance(options)
     unless options[:weeks].nil?
       options[:weeks], partial_weeks = options[:weeks].divmod(1)
@@ -75,7 +91,7 @@ class DateTime
     end
 
     d = to_date.advance(options)
-    datetime_advanced_by_date = change(:year => d.year, :month => d.month, :day => d.day)
+    datetime_advanced_by_date = change(year: d.year, month: d.month, day: d.day)
     seconds_to_advance = \
       options.fetch(:seconds, 0) +
       options.fetch(:minutes, 0) * 60 +
@@ -98,13 +114,13 @@ class DateTime
   # instance time. Do not use this method in combination with x.months, use
   # months_since instead!
   def since(seconds)
-    self + Rational(seconds.round, 86400)
+    self + Rational(seconds, 86400)
   end
   alias :in :since
 
   # Returns a new DateTime representing the start of the day (0:00).
   def beginning_of_day
-    change(:hour => 0)
+    change(hour: 0)
   end
   alias :midnight :beginning_of_day
   alias :at_midnight :beginning_of_day
@@ -112,7 +128,7 @@ class DateTime
 
   # Returns a new DateTime representing the middle of the day (12:00)
   def middle_of_day
-    change(:hour => 12)
+    change(hour: 12)
   end
   alias :midday :middle_of_day
   alias :noon :middle_of_day
@@ -122,31 +138,31 @@ class DateTime
 
   # Returns a new DateTime representing the end of the day (23:59:59).
   def end_of_day
-    change(:hour => 23, :min => 59, :sec => 59)
+    change(hour: 23, min: 59, sec: 59, usec: Rational(999999999, 1000))
   end
   alias :at_end_of_day :end_of_day
 
   # Returns a new DateTime representing the start of the hour (hh:00:00).
   def beginning_of_hour
-    change(:min => 0)
+    change(min: 0)
   end
   alias :at_beginning_of_hour :beginning_of_hour
 
   # Returns a new DateTime representing the end of the hour (hh:59:59).
   def end_of_hour
-    change(:min => 59, :sec => 59)
+    change(min: 59, sec: 59, usec: Rational(999999999, 1000))
   end
   alias :at_end_of_hour :end_of_hour
 
   # Returns a new DateTime representing the start of the minute (hh:mm:00).
   def beginning_of_minute
-    change(:sec => 0)
+    change(sec: 0)
   end
   alias :at_beginning_of_minute :beginning_of_minute
 
   # Returns a new DateTime representing the end of the minute (hh:mm:59).
   def end_of_minute
-    change(:sec => 59)
+    change(sec: 59, usec: Rational(999999999, 1000))
   end
   alias :at_end_of_minute :end_of_minute
 

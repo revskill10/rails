@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cases/migration/helper"
 
 module ActiveRecord
@@ -9,80 +11,118 @@ module ActiveRecord
 
       def setup
         super
-        add_column 'test_models', :url, :string
-        remove_column 'test_models', :created_at
-        remove_column 'test_models', :updated_at
+        add_column "test_models", :url, :string
+        remove_column "test_models", :created_at
+        remove_column "test_models", :updated_at
       end
 
       def teardown
-        ActiveSupport::Deprecation.silence { rename_table :octopi, :test_models if connection.table_exists? :octopi }
+        rename_table :octopi, :test_models if connection.table_exists? :octopi
         super
       end
 
-      if current_adapter?(:SQLite3Adapter)
-        def test_rename_table_for_sqlite_should_work_with_reserved_words
+      unless current_adapter?(:OracleAdapter)
+        def test_rename_table_should_work_with_reserved_words
           renamed = false
 
-          add_column :test_models, :url, :string
           connection.rename_table :references, :old_references
           connection.rename_table :test_models, :references
 
           renamed = true
 
           # Using explicit id in insert for compatibility across all databases
-          connection.execute "INSERT INTO 'references' (url, created_at, updated_at) VALUES ('http://rubyonrails.com', 0, 0)"
-          assert_equal 'http://rubyonrails.com', connection.select_value("SELECT url FROM 'references' WHERE id=1")
+          table_name = connection.quote_table_name("references")
+          connection.execute "INSERT INTO #{table_name} (id, url) VALUES (123, 'http://rubyonrails.com')"
+          assert_equal "http://rubyonrails.com", connection.select_value("SELECT url FROM #{table_name} WHERE id=123")
         ensure
-          return unless renamed
-          connection.rename_table :references, :test_models
-          connection.rename_table :old_references, :references
+          if renamed
+            connection.rename_table :references, :test_models
+            connection.rename_table :old_references, :references
+          end
         end
       end
 
-      unless current_adapter?(:FbAdapter) # Firebird cannot rename tables
-        def test_rename_table
-          rename_table :test_models, :octopi
+      def test_rename_table
+        rename_table :test_models, :octopi
 
-          connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
+        connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
 
-          assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
+        assert_equal "http://www.foreverflying.com/octopus-black7.jpg", connection.select_value("SELECT url FROM octopi WHERE id=1")
+      end
+
+      def test_rename_table_raises_for_long_table_names
+        name_limit = connection.table_name_length
+        long_name = "a" * (name_limit + 1)
+        short_name = "a" * name_limit
+
+        error = assert_raises(ArgumentError) do
+          connection.rename_table :test_models, long_name
         end
+        assert_equal "Table name '#{long_name}' is too long; the limit is #{name_limit} characters", error.message
 
-        def test_rename_table_with_an_index
-          add_index :test_models, :url
+        connection.rename_table :test_models, short_name
+        assert connection.table_exists?(short_name)
+      ensure
+        connection.drop_table short_name, if_exists: true
+      end
 
-          rename_table :test_models, :octopi
+      def test_rename_table_with_an_index
+        add_index :test_models, :url
 
-          connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
+        rename_table :test_models, :octopi
 
-          assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
-          index = connection.indexes(:octopi).first
-          assert index.columns.include?("url")
-          assert_equal 'index_octopi_on_url', index.name
-        end
+        connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
 
-        def test_rename_table_does_not_rename_custom_named_index
-          add_index :test_models, :url, name: 'special_url_idx'
+        assert_equal "http://www.foreverflying.com/octopus-black7.jpg", connection.select_value("SELECT url FROM octopi WHERE id=1")
+        index = connection.indexes(:octopi).first
+        assert_includes index.columns, "url"
+        assert_equal "index_octopi_on_url", index.name
+      end
 
-          rename_table :test_models, :octopi
+      def test_rename_table_does_not_rename_custom_named_index
+        add_index :test_models, :url, name: "special_url_idx"
 
-          assert_equal ['special_url_idx'], connection.indexes(:octopi).map(&:name)
-        end
+        rename_table :test_models, :octopi
+
+        assert_equal ["special_url_idx"], connection.indexes(:octopi).map(&:name)
       end
 
       if current_adapter?(:PostgreSQLAdapter)
         def test_rename_table_for_postgresql_should_also_rename_default_sequence
           rename_table :test_models, :octopi
 
-          pk, seq = connection.pk_and_sequence_for('octopi')
+          pk, seq = connection.pk_and_sequence_for("octopi")
 
           assert_equal ConnectionAdapters::PostgreSQL::Name.new("public", "octopi_#{pk}_seq"), seq
         end
 
+        def test_renaming_table_renames_primary_key
+          connection.create_table :cats, id: :uuid, default: "uuid_generate_v4()"
+          rename_table :cats, :felines
+
+          assert connection.table_exists? :felines
+          assert_not connection.table_exists? :cats
+
+          primary_key_name = connection.select_values(<<~SQL, "SCHEMA")[0]
+            SELECT c.relname
+              FROM pg_class c
+              JOIN pg_index i
+                ON c.oid = i.indexrelid
+             WHERE i.indisprimary
+               AND i.indrelid = 'felines'::regclass
+          SQL
+
+          assert_equal "felines_pkey", primary_key_name
+        ensure
+          connection.drop_table :cats, if_exists: true
+          connection.drop_table :felines, if_exists: true
+        end
+
         def test_renaming_table_doesnt_attempt_to_rename_non_existent_sequences
-          connection.create_table :cats, id: :uuid
+          connection.create_table :cats, id: :uuid, default: "uuid_generate_v4()"
           assert_nothing_raised { rename_table :cats, :felines }
-          ActiveSupport::Deprecation.silence { assert connection.table_exists? :felines }
+          assert connection.table_exists? :felines
+          assert_not connection.table_exists? :cats
         ensure
           connection.drop_table :cats, if_exists: true
           connection.drop_table :felines, if_exists: true

@@ -1,5 +1,6 @@
-module ActiveModel
+# frozen_string_literal: true
 
+module ActiveModel
   module Validations
     class AcceptanceValidator < EachValidator # :nodoc:
       def initialize(options)
@@ -9,64 +10,73 @@ module ActiveModel
 
       def validate_each(record, attribute, value)
         unless acceptable_option?(value)
-          record.errors.add(attribute, :accepted, options.except(:accept, :allow_nil))
+          record.errors.add(attribute, :accepted, **options.except(:accept, :allow_nil))
         end
       end
 
       private
+        def setup!(klass)
+          define_attributes = LazilyDefineAttributes.new(attributes)
+          klass.include(define_attributes) unless klass.included_modules.include?(define_attributes)
+        end
 
-      def setup!(klass)
-        klass.include(LazilyDefineAttributes.new(AttributeDefinition.new(attributes)))
-      end
+        def acceptable_option?(value)
+          Array(options[:accept]).include?(value)
+        end
 
-      def acceptable_option?(value)
-        Array(options[:accept]).include?(value)
-      end
-
-      class LazilyDefineAttributes < Module
-        def initialize(attribute_definition)
-          define_method(:respond_to_missing?) do |method_name, include_private=false|
-            super(method_name, include_private) || attribute_definition.matches?(method_name)
+        class LazilyDefineAttributes < Module
+          def initialize(attributes)
+            @attributes = attributes.map(&:to_s)
           end
 
-          define_method(:method_missing) do |method_name, *args, &block|
-            if attribute_definition.matches?(method_name)
-              attribute_definition.define_on(self.class)
-              send(method_name, *args, &block)
-            else
-              super(method_name, *args, &block)
+          def included(klass)
+            @lock = Mutex.new
+            mod = self
+
+            define_method(:respond_to_missing?) do |method_name, include_private = false|
+              mod.define_on(klass)
+              super(method_name, include_private) || mod.matches?(method_name)
+            end
+
+            define_method(:method_missing) do |method_name, *args, &block|
+              mod.define_on(klass)
+              if mod.matches?(method_name)
+                send(method_name, *args, &block)
+              else
+                super(method_name, *args, &block)
+              end
             end
           end
+
+          def matches?(method_name)
+            attr_name = method_name.to_s.chomp("=")
+            attributes.any? { |name| name == attr_name }
+          end
+
+          def define_on(klass)
+            @lock&.synchronize do
+              return unless @lock
+
+              attr_readers = attributes.reject { |name| klass.attribute_method?(name) }
+              attr_writers = attributes.reject { |name| klass.attribute_method?("#{name}=") }
+
+              attr_reader(*attr_readers)
+              attr_writer(*attr_writers)
+
+              remove_method :respond_to_missing?
+              remove_method :method_missing
+
+              @lock = nil
+            end
+          end
+
+          def ==(other)
+            self.class == other.class && attributes == other.attributes
+          end
+
+          protected
+            attr_reader :attributes
         end
-      end
-
-      class AttributeDefinition
-        def initialize(attributes)
-          @attributes = attributes.map(&:to_s)
-        end
-
-        def matches?(method_name)
-          attr_name = convert_to_reader_name(method_name)
-          attributes.include?(attr_name)
-        end
-
-        def define_on(klass)
-          attr_readers = attributes.reject { |name| klass.attribute_method?(name) }
-          attr_writers = attributes.reject { |name| klass.attribute_method?("#{name}=") }
-          klass.send(:attr_reader, *attr_readers)
-          klass.send(:attr_writer, *attr_writers)
-        end
-
-        protected
-
-        attr_reader :attributes
-
-        private
-
-        def convert_to_reader_name(method_name)
-          method_name.to_s.chomp('=')
-        end
-      end
     end
 
     module HelperMethods
@@ -80,7 +90,7 @@ module ActiveModel
       #
       # If the database column does not exist, the +terms_of_service+ attribute
       # is entirely virtual. This check is performed only if +terms_of_service+
-      # is not +nil+ and by default on save.
+      # is not +nil+.
       #
       # Configuration options:
       # * <tt>:message</tt> - A custom error message (default is: "must be
@@ -94,7 +104,7 @@ module ActiveModel
       #
       # There is also a list of default options supported by every validator:
       # +:if+, +:unless+, +:on+, +:allow_nil+, +:allow_blank+, and +:strict+.
-      # See <tt>ActiveModel::Validation#validates</tt> for more information.
+      # See ActiveModel::Validations::ClassMethods#validates for more information.
       def validates_acceptance_of(*attr_names)
         validates_with AcceptanceValidator, _merge_attributes(attr_names)
       end

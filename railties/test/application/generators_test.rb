@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "isolation/abstract_unit"
 
 module ApplicationTests
@@ -29,7 +31,12 @@ module ApplicationTests
     end
 
     test "allow running plugin new generator inside Rails app directory" do
-      FileUtils.cd(rails_root){ `ruby bin/rails plugin new vendor/plugins/bukkits` }
+      rails "plugin", "new", "vendor/plugins/bukkits"
+      assert File.exist?(File.join(rails_root, "vendor/plugins/bukkits/test/dummy/config/application.rb"))
+    end
+
+    test "allow generating plugin inside Rails app directory" do
+      rails "generate", "plugin", "vendor/plugins/bukkits"
       assert File.exist?(File.join(rails_root, "vendor/plugins/bukkits/test/dummy/config/application.rb"))
     end
 
@@ -113,7 +120,7 @@ module ApplicationTests
     test "generators with string and hash for options should generate symbol keys" do
       with_bare_config do |c|
         c.generators do |g|
-          g.orm    'data_mapper', migration: false
+          g.orm    "data_mapper", migration: false
         end
 
         expected = {
@@ -134,10 +141,10 @@ module ApplicationTests
       require "#{app_path}/config/environment"
       Rails.application.load_generators
 
-      assert Rails::Generators.hidden_namespaces.include?("assets")
-      assert Rails::Generators.hidden_namespaces.include?("helper")
-      assert Rails::Generators.hidden_namespaces.include?("js")
-      assert Rails::Generators.hidden_namespaces.include?("css")
+      assert_includes Rails::Generators.hidden_namespaces, "assets"
+      assert_includes Rails::Generators.hidden_namespaces, "helper"
+      assert_includes Rails::Generators.hidden_namespaces, "js"
+      assert_includes Rails::Generators.hidden_namespaces, "css"
       assert Rails::Generators.options[:rails][:api]
       assert_equal false, Rails::Generators.options[:rails][:assets]
       assert_equal false, Rails::Generators.options[:rails][:helper]
@@ -165,9 +172,88 @@ module ApplicationTests
         config.api_only = true
       RUBY
 
-      FileUtils.cd(rails_root){ `bin/rails generate mailer notifier foo` }
+      rails "generate", "mailer", "notifier", "foo"
       assert File.exist?(File.join(rails_root, "app/views/notifier_mailer/foo.text.erb"))
       assert File.exist?(File.join(rails_root, "app/views/notifier_mailer/foo.html.erb"))
+    end
+
+    test "ARGV is populated" do
+      require "#{app_path}/config/environment"
+      Rails.application.load_generators
+
+      class Rails::Generators::CheckArgvGenerator < Rails::Generators::Base
+        def check_expected
+          raise "ARGV.first is not expected" unless ARGV.first == "expected"
+        end
+      end
+
+      quietly do
+        Rails::Command.invoke(:generate, ["check_argv", "expected"]) # should not raise
+      end
+    end
+
+    test "help does not show hidden namespaces and hidden commands" do
+      FileUtils.cd(rails_root) do
+        output = rails("generate", "--help")
+        assert_no_match "active_record:migration", output
+        assert_no_match "credentials", output
+
+        output = rails("destroy", "--help")
+        assert_no_match "active_record:migration", output
+      end
+    end
+
+    test "skip collision check" do
+      rails("generate", "model", "post", "title:string")
+
+      output = rails("generate", "model", "post", "title:string", "body:string")
+      assert_match(/The name 'Post' is either already used in your application or reserved/, output)
+
+      output = rails("generate", "model", "post", "title:string", "body:string", "--skip-collision-check")
+      assert_no_match(/The name 'Post' is either already used in your application or reserved/, output)
+    end
+
+    test "force" do
+      rails("generate", "model", "post", "title:string")
+
+      output = rails("generate", "model", "post", "title:string", "body:string")
+      assert_match(/The name 'Post' is either already used in your application or reserved/, output)
+
+      output = rails("generate", "model", "post", "title:string", "body:string", "--force")
+      assert_no_match(/The name 'Post' is either already used in your application or reserved/, output)
+    end
+
+    test "generators with after_generate callback" do
+      model_file = File.join(app_path, "app/models/post.rb")
+      with_config do |c|
+        c.generators.after_generate do |files|
+          expected = %w(
+            db/migrate/20000101000000_create_posts.rb
+            app/models/post.rb
+            test/models/post_test.rb
+            test/fixtures/posts.yml
+            app/controllers/posts_controller.rb
+            app/views/posts/index.html.erb
+            app/views/posts/edit.html.erb
+            app/views/posts/show.html.erb
+            app/views/posts/new.html.erb
+            app/views/posts/_form.html.erb
+            app/views/posts/_post.html.erb
+            test/controllers/posts_controller_test.rb
+            test/system/posts_test.rb
+            app/helpers/posts_helper.rb
+          )
+          assert_equal expected, files
+
+          File.open(model_file, "a") { |f| f.write("# Add comment to model") }
+        end
+      end
+
+      travel_to Time.utc(2000, 1, 1)  do
+        rails("generate", "scaffold", "post", "title:string")
+      end
+
+      assert_match(/# Add comment to model/, File.read(model_file))
     end
   end
 end

@@ -1,10 +1,19 @@
-module ActiveRecord
+# frozen_string_literal: true
 
+module ActiveRecord
   # = Active Record Errors
   #
   # Generic Active Record exception class.
   class ActiveRecordError < StandardError
   end
+
+  # DEPRECATED: Previously raised when trying to use a feature in Active Record which
+  # requires Active Job but the gem is not present. Now raises a NameError.
+  include ActiveSupport::Deprecation::DeprecatedConstantAccessor
+  DeprecatedActiveJobRequiredError = Class.new(ActiveRecordError) # :nodoc:
+  deprecate_constant "ActiveJobRequiredError", "ActiveRecord::DeprecatedActiveJobRequiredError",
+    message: "ActiveRecord::ActiveJobRequiredError has been deprecated. If Active Job is not present, a NameError will be raised instead.",
+    deprecator: ActiveRecord.deprecator
 
   # Raised when the single-table inheritance mechanism fails to locate the subclass
   # (for example due to improper usage of column that
@@ -37,6 +46,10 @@ module ActiveRecord
   class AdapterNotSpecified < ActiveRecordError
   end
 
+  # Raised when a model makes a query but it has not specified an associated table.
+  class TableNotSpecified < ActiveRecordError
+  end
+
   # Raised when Active Record cannot find database adapter specified in
   # +config/database.yml+ or programmatically.
   class AdapterNotFound < ActiveRecordError
@@ -44,8 +57,49 @@ module ActiveRecord
 
   # Raised when connection to the database could not been established (for example when
   # {ActiveRecord::Base.connection=}[rdoc-ref:ConnectionHandling#connection]
-  # is given a nil object).
+  # is given a +nil+ object).
   class ConnectionNotEstablished < ActiveRecordError
+  end
+
+  # Raised when a connection could not be obtained within the connection
+  # acquisition timeout period: because max connections in pool
+  # are in use.
+  class ConnectionTimeoutError < ConnectionNotEstablished
+  end
+
+  # Raised when connection to the database could not been established because it was not
+  # able to connect to the host or when the authorization failed.
+  class DatabaseConnectionError < ConnectionNotEstablished
+    def initialize(message = nil)
+      super(message || "Database connection error")
+    end
+
+    class << self
+      def hostname_error(hostname)
+        DatabaseConnectionError.new(<<~MSG)
+          There is an issue connecting with your hostname: #{hostname}.\n
+          Please check your database configuration and ensure there is a valid connection to your database.
+        MSG
+      end
+
+      def username_error(username)
+        DatabaseConnectionError.new(<<~MSG)
+          There is an issue connecting to your database with your username/password, username: #{username}.\n
+          Please check your database configuration to ensure the username/password are valid.
+        MSG
+      end
+    end
+  end
+
+  # Raised when a pool was unable to get ahold of all its connections
+  # to perform a "group" action such as
+  # {ActiveRecord::Base.connection_pool.disconnect!}[rdoc-ref:ConnectionAdapters::ConnectionPool#disconnect!]
+  # or {ActiveRecord::Base.connection_handler.clear_reloadable_connections!}[rdoc-ref:ConnectionAdapters::ConnectionHandler#clear_reloadable_connections!].
+  class ExclusiveConnectionTimeoutError < ConnectionTimeoutError
+  end
+
+  # Raised when a write to the database is attempted on a read only connection.
+  class ReadOnlyError < ActiveRecordError
   end
 
   # Raised when Active Record cannot find a record by given id or set of ids.
@@ -63,7 +117,7 @@ module ActiveRecord
 
   # Raised by {ActiveRecord::Base#save!}[rdoc-ref:Persistence#save!] and
   # {ActiveRecord::Base.create!}[rdoc-ref:Persistence::ClassMethods#create!]
-  # methods when a record is invalid and can not be saved.
+  # methods when a record is invalid and cannot be saved.
   class RecordNotSaved < ActiveRecordError
     attr_reader :record
 
@@ -74,7 +128,7 @@ module ActiveRecord
   end
 
   # Raised by {ActiveRecord::Base#destroy!}[rdoc-ref:Persistence#destroy!]
-  # when a call to {#destroy}[rdoc-ref:Persistence#destroy!]
+  # when a call to {#destroy}[rdoc-ref:Persistence#destroy]
   # would return false.
   #
   #   begin
@@ -92,23 +146,35 @@ module ActiveRecord
     end
   end
 
+  # Raised when Active Record finds multiple records but only expected one.
+  class SoleRecordExceeded < ActiveRecordError
+    attr_reader :record
+
+    def initialize(record = nil)
+      @record = record
+      super "Wanted only one #{record&.name || "record"}"
+    end
+  end
+
   # Superclass for all database execution errors.
   #
   # Wraps the underlying database error as +cause+.
   class StatementInvalid < ActiveRecordError
-
-    def initialize(message = nil, original_exception = nil)
-      if original_exception
-        ActiveSupport::Deprecation.warn("Passing #original_exception is deprecated and has no effect. " \
-                                        "Exceptions will automatically capture the original exception.", caller)
-      end
-
-      super(message || $!.try(:message))
+    def initialize(message = nil, sql: nil, binds: nil)
+      super(message || $!&.message)
+      @sql = sql
+      @binds = binds
     end
 
-    def original_exception
-      ActiveSupport::Deprecation.warn("#original_exception is deprecated. Use #cause instead.", caller)
-      cause
+    attr_reader :sql, :binds
+
+    def set_query(sql, binds)
+      unless @sql
+        @sql = sql
+        @binds = binds
+      end
+
+      self
     end
   end
 
@@ -117,21 +183,83 @@ module ActiveRecord
   class WrappedDatabaseException < StatementInvalid
   end
 
-  # Raised when a record cannot be inserted because it would violate a uniqueness constraint.
+  # Raised when a record cannot be inserted or updated because it would violate a uniqueness constraint.
   class RecordNotUnique < WrappedDatabaseException
   end
 
-  # Raised when a record cannot be inserted or updated because it references a non-existent record.
+  # Raised when a record cannot be inserted or updated because it references a non-existent record,
+  # or when a record cannot be deleted because a parent record references it.
   class InvalidForeignKey < WrappedDatabaseException
+  end
+
+  # Raised when a foreign key constraint cannot be added because the column type does not match the referenced column type.
+  class MismatchedForeignKey < StatementInvalid
+    def initialize(
+      message: nil,
+      sql: nil,
+      binds: nil,
+      table: nil,
+      foreign_key: nil,
+      target_table: nil,
+      primary_key: nil,
+      primary_key_column: nil,
+      query_parser: nil
+    )
+      @original_message = message
+      @query_parser = query_parser
+
+      if table
+        type = primary_key_column.bigint? ? :bigint : primary_key_column.type
+        msg = <<~EOM.squish
+          Column `#{foreign_key}` on table `#{table}` does not match column `#{primary_key}` on `#{target_table}`,
+          which has type `#{primary_key_column.sql_type}`.
+          To resolve this issue, change the type of the `#{foreign_key}` column on `#{table}` to be :#{type}.
+          (For example `t.#{type} :#{foreign_key}`).
+        EOM
+      else
+        msg = <<~EOM.squish
+          There is a mismatch between the foreign key and primary key column types.
+          Verify that the foreign key column type and the primary key of the associated table match types.
+        EOM
+      end
+      if message
+        msg << "\nOriginal message: #{message}"
+      end
+
+      super(msg, sql: sql, binds: binds)
+    end
+
+    def set_query(sql, binds)
+      if @query_parser && !@sql
+        self.class.new(
+          message: @original_message,
+          sql: sql,
+          binds: binds,
+          **@query_parser.call(sql)
+        ).tap do |exception|
+          exception.set_backtrace backtrace
+        end
+      else
+        super
+      end
+    end
+  end
+
+  # Raised when a record cannot be inserted or updated because it would violate a not null constraint.
+  class NotNullViolation < StatementInvalid
   end
 
   # Raised when a record cannot be inserted or updated because a value too long for a column type.
   class ValueTooLong < StatementInvalid
   end
 
-  # Raised when number of bind variables in statement given to +:condition+ key
-  # (for example, when using {ActiveRecord::Base.find}[rdoc-ref:FinderMethods#find] method)
-  # does not match number of expected values supplied.
+  # Raised when values that executed are out of range.
+  class RangeError < StatementInvalid
+  end
+
+  # Raised when the number of placeholders in an SQL fragment passed to
+  # {ActiveRecord::Base.where}[rdoc-ref:QueryMethods#where]
+  # does not match the number of values supplied.
   #
   # For example, when there are two placeholders with only one value supplied:
   #
@@ -141,9 +269,37 @@ module ActiveRecord
 
   # Raised when a given database does not exist.
   class NoDatabaseError < StatementInvalid
+    include ActiveSupport::ActionableError
+
+    action "Create database" do
+      ActiveRecord::Tasks::DatabaseTasks.create_current
+    end
+
+    def initialize(message = nil)
+      super(message || "Database not found")
+    end
+
+    class << self
+      def db_error(db_name)
+        NoDatabaseError.new(<<~MSG)
+          We could not find your database: #{db_name}. Available database configurations can be found in config/database.yml file.
+
+          To resolve this error:
+
+          - Did you create the database for this app, or delete it? You may need to create your database.
+          - Has the database name changed? Check your database.yml config has the correct database name.
+
+          To create your database, run:\n\n        bin/rails db:create
+        MSG
+      end
+    end
   end
 
-  # Raised when Postgres returns 'cached plan must not change result type' and
+  # Raised when creating a database if it exists.
+  class DatabaseAlreadyExists < StatementInvalid
+  end
+
+  # Raised when PostgreSQL returns 'cached plan must not change result type' and
   # we cannot retry gracefully (e.g. inside a transaction)
   class PreparedStatementCacheExpired < StatementInvalid
   end
@@ -166,7 +322,6 @@ module ActiveRecord
         super("Stale object error.")
       end
     end
-
   end
 
   # Raised when association is being configured improperly or user tries to use
@@ -179,6 +334,10 @@ module ActiveRecord
 
   # Raised on attempt to update record that is instantiated as read only.
   class ReadOnlyRecord < ActiveRecordError
+  end
+
+  # Raised on attempt to lazily load records that are marked as strict loading.
+  class StrictLoadingViolationError < ActiveRecordError
   end
 
   # {ActiveRecord::Base.transaction}[rdoc-ref:Transactions::ClassMethods#transaction]
@@ -200,7 +359,7 @@ module ActiveRecord
   #           # The system must fail on Friday so that our support department
   #           # won't be out of job. We silently rollback this transaction
   #           # without telling the user.
-  #           raise ActiveRecord::Rollback, "Call tech support!"
+  #           raise ActiveRecord::Rollback
   #         end
   #       end
   #       # ActiveRecord::Rollback is the only exception that won't be passed on
@@ -285,18 +444,81 @@ module ActiveRecord
   class TransactionIsolationError < ActiveRecordError
   end
 
-  # TransactionSerializationError will be raised when a transaction is rolled
+  # TransactionRollbackError will be raised when a transaction is rolled
   # back by the database due to a serialization failure or a deadlock.
   #
   # See the following:
   #
-  # * http://www.postgresql.org/docs/current/static/transaction-iso.html
-  # * https://dev.mysql.com/doc/refman/5.7/en/error-messages-server.html#error_er_lock_deadlock
-  class TransactionSerializationError < ActiveRecordError
+  # * https://www.postgresql.org/docs/current/static/transaction-iso.html
+  # * https://dev.mysql.com/doc/mysql-errors/en/server-error-reference.html#error_er_lock_deadlock
+  class TransactionRollbackError < StatementInvalid
+  end
+
+  # AsynchronousQueryInsideTransactionError will be raised when attempting
+  # to perform an asynchronous query from inside a transaction
+  class AsynchronousQueryInsideTransactionError < ActiveRecordError
+  end
+
+  # SerializationFailure will be raised when a transaction is rolled
+  # back by the database due to a serialization failure.
+  class SerializationFailure < TransactionRollbackError
+  end
+
+  # Deadlocked will be raised when a transaction is rolled
+  # back by the database when a deadlock is encountered.
+  class Deadlocked < TransactionRollbackError
   end
 
   # IrreversibleOrderError is raised when a relation's order is too complex for
   # +reverse_order+ to automatically reverse.
   class IrreversibleOrderError < ActiveRecordError
+  end
+
+  # Superclass for errors that have been aborted (either by client or server).
+  class QueryAborted < StatementInvalid
+  end
+
+  # LockWaitTimeout will be raised when lock wait timeout exceeded.
+  class LockWaitTimeout < StatementInvalid
+  end
+
+  # StatementTimeout will be raised when statement timeout exceeded.
+  class StatementTimeout < QueryAborted
+  end
+
+  # QueryCanceled will be raised when canceling statement due to user request.
+  class QueryCanceled < QueryAborted
+  end
+
+  # AdapterTimeout will be raised when database clients times out while waiting from the server.
+  class AdapterTimeout < QueryAborted
+  end
+
+  # ConnectionFailed will be raised when the network connection to the
+  # database fails while sending a query or waiting for its result.
+  class ConnectionFailed < QueryAborted
+  end
+
+  # UnknownAttributeReference is raised when an unknown and potentially unsafe
+  # value is passed to a query method. For example, passing a non column name
+  # value to a relation's #order method might cause this exception.
+  #
+  # When working around this exception, caution should be taken to avoid SQL
+  # injection vulnerabilities when passing user-provided values to query
+  # methods. Known-safe values can be passed to query methods by wrapping them
+  # in Arel.sql.
+  #
+  # For example, the following code would raise this exception:
+  #
+  #   Post.order("REPLACE(title, 'misc', 'zzzz') asc").pluck(:id)
+  #
+  # The desired result can be accomplished by wrapping the known-safe string
+  # in Arel.sql:
+  #
+  #   Post.order(Arel.sql("REPLACE(title, 'misc', 'zzzz') asc")).pluck(:id)
+  #
+  # Again, such a workaround should *not* be used when passing user-provided
+  # values, such as request parameters or model attributes to query methods.
+  class UnknownAttributeReference < ActiveRecordError
   end
 end

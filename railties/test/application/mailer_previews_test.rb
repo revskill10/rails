@@ -1,11 +1,14 @@
-require 'isolation/abstract_unit'
-require 'rack/test'
-require 'base64'
+# frozen_string_literal: true
+
+require "isolation/abstract_unit"
+require "rack/test"
+require "base64"
 
 module ApplicationTests
   class MailerPreviewsTest < ActiveSupport::TestCase
     include ActiveSupport::Testing::Isolation
     include Rack::Test::Methods
+    include ERB::Util
 
     def setup
       build_app
@@ -27,10 +30,10 @@ module ApplicationTests
       assert_equal 404, last_response.status
     end
 
-    test "/rails/mailers is accessible with correct configuraiton" do
+    test "/rails/mailers is accessible with correct configuration" do
       add_to_config "config.action_mailer.show_previews = true"
       app("production")
-      get "/rails/mailers", {}, {"REMOTE_ADDR" => "4.2.42.42"}
+      get "/rails/mailers", {}, { "REMOTE_ADDR" => "4.2.42.42" }
       assert_equal 200, last_response.status
     end
 
@@ -52,8 +55,8 @@ module ApplicationTests
       assert_equal 200, last_response.status
     end
 
-    test "mailer previews are loaded from the default preview_path" do
-      mailer 'notifier', <<-RUBY
+    test "mailer previews are loaded from the default preview_paths" do
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -63,11 +66,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -75,52 +78,57 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers"
       assert_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
       assert_match '<li><a href="/rails/mailers/notifier/foo">foo</a></li>', last_response.body
     end
 
-    test "mailer previews are loaded from a custom preview_path" do
-      add_to_config "config.action_mailer.preview_path = '#{app_path}/lib/mailer_previews'"
+    test "mailer previews are loaded from custom preview_paths" do
+      app_dir "lib/mailer_previews"
+      add_to_config "config.action_mailer.preview_paths = ['#{app_path}/lib/notifier_previews', '#{app_path}/lib/confirm_previews']"
 
-      mailer 'notifier', <<-RUBY
-        class Notifier < ActionMailer::Base
-          default from: "from@example.com"
+      ["notifier", "confirm"].each do |keyword|
+        mailer keyword, <<-RUBY
+          class #{keyword.camelize} < ActionMailer::Base
+            default from: "from@example.com"
 
-          def foo
-            mail to: "to@example.org"
+            def foo
+              mail to: "to@example.org"
+            end
           end
-        end
-      RUBY
+        RUBY
 
-      text_template 'notifier/foo', <<-RUBY
-        Hello, World!
-      RUBY
+        text_template "#{keyword}/foo", <<-RUBY
+          Hello, World!
+        RUBY
 
-      app_file 'lib/mailer_previews/notifier_preview.rb', <<-RUBY
-        class NotifierPreview < ActionMailer::Preview
-          def foo
-            Notifier.foo
+        app_file "lib/#{keyword}_previews/notifier_preview.rb", <<-RUBY
+          class #{keyword.camelize}Preview < ActionMailer::Preview
+            def foo
+              #{keyword.camelize}.foo
+            end
           end
-        end
-      RUBY
+        RUBY
+      end
 
-      app('development')
+      app("development")
 
       get "/rails/mailers"
       assert_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
       assert_match '<li><a href="/rails/mailers/notifier/foo">foo</a></li>', last_response.body
+      assert_match '<h3><a href="/rails/mailers/confirm">Confirm</a></h3>', last_response.body
+      assert_match '<li><a href="/rails/mailers/confirm/foo">foo</a></li>', last_response.body
     end
 
     test "mailer previews are reloaded across requests" do
-      app('development')
+      app("development")
 
       get "/rails/mailers"
       assert_no_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -130,11 +138,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -145,7 +153,7 @@ module ApplicationTests
       get "/rails/mailers"
       assert_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
 
-      remove_file 'test/mailers/previews/notifier_preview.rb'
+      remove_file "test/mailers/previews/notifier_preview.rb"
       sleep(1)
 
       get "/rails/mailers"
@@ -153,7 +161,7 @@ module ApplicationTests
     end
 
     test "mailer preview actions are added and removed" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -163,11 +171,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -175,14 +183,14 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers"
       assert_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
       assert_match '<li><a href="/rails/mailers/notifier/foo">foo</a></li>', last_response.body
       assert_no_match '<li><a href="/rails/mailers/notifier/bar">bar</a></li>', last_response.body
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -196,15 +204,15 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      text_template 'notifier/bar', <<-RUBY
+      text_template "notifier/bar", <<-RUBY
         Goodbye, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -223,7 +231,7 @@ module ApplicationTests
       assert_match '<li><a href="/rails/mailers/notifier/foo">foo</a></li>', last_response.body
       assert_match '<li><a href="/rails/mailers/notifier/bar">bar</a></li>', last_response.body
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -233,9 +241,9 @@ module ApplicationTests
         end
       RUBY
 
-      remove_file 'app/views/notifier/bar.text.erb'
+      remove_file "app/views/notifier/bar.text.erb"
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -251,15 +259,36 @@ module ApplicationTests
       assert_no_match '<li><a href="/rails/mailers/notifier/bar">bar</a></li>', last_response.body
     end
 
-    test "mailer previews are reloaded from a custom preview_path" do
-      add_to_config "config.action_mailer.preview_path = '#{app_path}/lib/mailer_previews'"
+    test "mailer preview_path option is deprecated" do
+      prev = ActionMailer::Base.preview_paths
+      ActionMailer::Base.preview_paths = ["#{app_path}/lib/mailer/previews"]
+      assert_deprecated(ActionMailer.deprecator) do
+        assert_equal "#{app_path}/lib/mailer/previews", ActionMailer::Base.preview_path
+      end
+    ensure
+      ActionMailer::Base.preview_paths = prev
+    end
 
-      app('development')
+    test "mailer preview_path= option is deprecated" do
+      prev = ActionMailer::Base.preview_paths
+      assert_deprecated(ActionMailer.deprecator) do
+        ActionMailer::Base.preview_path = "#{app_path}/lib/mailer/previews"
+      end
+      assert_equal ["#{app_path}/lib/mailer/previews"], ActionMailer::Base.preview_paths
+    ensure
+      ActionMailer::Base.preview_paths = prev
+    end
+
+    test "mailer previews are reloaded from custom preview_paths" do
+      app_dir "lib/mailer_previews"
+      add_to_config "config.action_mailer.preview_paths = ['#{app_path}/lib/mailer_previews']"
+
+      app("development")
 
       get "/rails/mailers"
       assert_no_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -269,11 +298,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      app_file 'lib/mailer_previews/notifier_preview.rb', <<-RUBY
+      app_file "lib/mailer_previews/notifier_preview.rb", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -284,7 +313,7 @@ module ApplicationTests
       get "/rails/mailers"
       assert_match '<h3><a href="/rails/mailers/notifier">Notifier</a></h3>', last_response.body
 
-      remove_file 'lib/mailer_previews/notifier_preview.rb'
+      remove_file "lib/mailer_previews/notifier_preview.rb"
       sleep(1)
 
       get "/rails/mailers"
@@ -292,14 +321,14 @@ module ApplicationTests
     end
 
     test "mailer preview not found" do
-      app('development')
+      app("development")
       get "/rails/mailers/notifier"
-      assert last_response.not_found?
-      assert_match "Mailer preview &#39;notifier&#39; not found", last_response.body
+      assert_predicate last_response, :not_found?
+      assert_match "Mailer preview &#39;notifier&#39; not found", h(last_response.body)
     end
 
     test "mailer preview email not found" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -309,11 +338,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -321,15 +350,19 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/bar"
-      assert last_response.not_found?
-      assert_match "Email &#39;bar&#39; not found in NotifierPreview", last_response.body
+      assert_predicate last_response, :not_found?
+      assert_match "Email &#39;bar&#39; not found in NotifierPreview", h(last_response.body)
+
+      get "/rails/mailers/download/notifier/bar"
+      assert_predicate last_response, :not_found?
+      assert_match "Email &#39;bar&#39; not found in NotifierPreview", h(last_response.body)
     end
 
     test "mailer preview NullMail" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -339,7 +372,7 @@ module ApplicationTests
         end
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -347,7 +380,7 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_match "You are trying to preview an email that does not have any content.", last_response.body
@@ -355,7 +388,7 @@ module ApplicationTests
     end
 
     test "mailer preview email part not found" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -365,11 +398,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -377,15 +410,15 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo?part=text%2Fhtml"
-      assert last_response.not_found?
-      assert_match "Email part &#39;text/html&#39; not found in NotifierPreview#foo", last_response.body
+      assert_predicate last_response, :not_found?
+      assert_match "Email part &#39;text/html&#39; not found in NotifierPreview#foo", h(last_response.body)
     end
 
     test "message header uses full display names" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "Ruby on Rails <core@rubyonrails.org>"
 
@@ -396,11 +429,11 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -408,17 +441,24 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_equal 200, last_response.status
       assert_match "Ruby on Rails &lt;core@rubyonrails.org&gt;", last_response.body
       assert_match "Andrew White &lt;andyw@pixeltrix.co.uk&gt;", last_response.body
       assert_match "David Heinemeier Hansson &lt;david@heinemeierhansson.com&gt;", last_response.body
+
+      get "/rails/mailers/download/notifier/foo"
+      email = Mail.read_from_string(last_response.body)
+      assert_equal "attachment; filename=\"foo.eml\"; filename*=UTF-8''foo.eml", last_response.headers["Content-Disposition"]
+      assert_equal 200, last_response.status
+      assert_equal ["andyw@pixeltrix.co.uk"], email.to
+      assert_equal ["david@heinemeierhansson.com"], email.cc
     end
 
     test "part menu selects correct option" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -428,15 +468,15 @@ module ApplicationTests
         end
       RUBY
 
-      html_template 'notifier/foo', <<-RUBY
+      html_template "notifier/foo", <<-RUBY
         <p>Hello, World!</p>
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -444,19 +484,25 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo.html"
       assert_equal 200, last_response.status
-      assert_match '<option selected value="?part=text%2Fhtml">View as HTML email</option>', last_response.body
+      assert_match '<option selected value="part=text%2Fhtml">View as HTML email</option>', last_response.body
 
       get "/rails/mailers/notifier/foo.txt"
       assert_equal 200, last_response.status
-      assert_match '<option selected value="?part=text%2Fplain">View as plain-text email</option>', last_response.body
+      assert_match '<option selected value="part=text%2Fplain">View as plain-text email</option>', last_response.body
     end
 
-    test "mailer previews create correct links when loaded on a subdirectory" do
-      mailer 'notifier', <<-RUBY
+    test "locale menu selects correct option" do
+      app_file "config/initializers/available_locales.rb", <<-RUBY
+        Rails.application.configure do
+          config.i18n.available_locales = %i[en ja]
+        end
+      RUBY
+
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -466,11 +512,15 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      html_template "notifier/foo", <<-RUBY
+        <p>Hello, World!</p>
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -478,32 +528,136 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
-      get "/rails/mailers", {}, 'SCRIPT_NAME' => '/my_app'
+      get "/rails/mailers/notifier/foo.html"
+      assert_equal 200, last_response.status
+      assert_match '<option selected value="locale=en">en', last_response.body
+      assert_match '<option  value="locale=ja">ja', last_response.body
+
+      get "/rails/mailers/notifier/foo.html?locale=ja"
+      assert_equal 200, last_response.status
+      assert_match '<option  value="locale=en">en', last_response.body
+      assert_match '<option selected value="locale=ja">ja', last_response.body
+
+      get "/rails/mailers/notifier/foo.txt"
+      assert_equal 200, last_response.status
+      assert_match '<option selected value="locale=en">en', last_response.body
+      assert_match '<option  value="locale=ja">ja', last_response.body
+
+      get "/rails/mailers/notifier/foo.txt?locale=ja"
+      assert_equal 200, last_response.status
+      assert_match '<option  value="locale=en">en', last_response.body
+      assert_match '<option selected value="locale=ja">ja', last_response.body
+    end
+
+    test "preview does not leak I18n global setting changes" do
+      I18n.with_locale(:en) do
+        get "/rails/mailers/notifier/foo.txt?locale=ja"
+        assert_equal :en, I18n.locale
+      end
+    end
+
+    test "mailer previews create correct links when loaded on a subdirectory" do
+      mailer "notifier", <<-RUBY
+        class Notifier < ActionMailer::Base
+          default from: "from@example.com"
+
+          def foo
+            mail to: "to@example.org"
+          end
+        end
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
+        Hello, World!
+      RUBY
+
+      mailer_preview "notifier", <<-RUBY
+        class NotifierPreview < ActionMailer::Preview
+          def foo
+            Notifier.foo
+          end
+        end
+      RUBY
+
+      app("development")
+
+      get "/rails/mailers", {}, { "SCRIPT_NAME" => "/my_app" }
       assert_match '<h3><a href="/my_app/rails/mailers/notifier">Notifier</a></h3>', last_response.body
       assert_match '<li><a href="/my_app/rails/mailers/notifier/foo">foo</a></li>', last_response.body
+    end
+
+    test "mailer preview receives query params" do
+      mailer "notifier", <<-RUBY
+        class Notifier < ActionMailer::Base
+          default from: "from@example.com"
+
+          def foo(name)
+            @name = name
+            mail to: "to@example.org"
+          end
+        end
+      RUBY
+
+      html_template "notifier/foo", <<-RUBY
+        <p>Hello, <%= @name %>!</p>
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
+        Hello, <%= @name %>!
+      RUBY
+
+      mailer_preview "notifier", <<-RUBY
+        class NotifierPreview < ActionMailer::Preview
+          def foo
+            Notifier.foo(params[:name] || "World")
+          end
+        end
+      RUBY
+
+      app("development")
+
+      get "/rails/mailers/notifier/foo.txt"
+      assert_equal 200, last_response.status
+      assert_match '<iframe name="messageBody" src="?part=text%2Fplain">', last_response.body
+      assert_match '<option selected value="part=text%2Fplain">', last_response.body
+      assert_match '<option  value="part=text%2Fhtml">', last_response.body
+
+      get "/rails/mailers/notifier/foo?part=text%2Fplain"
+      assert_equal 200, last_response.status
+      assert_match %r[Hello, World!], last_response.body
+
+      get "/rails/mailers/notifier/foo.html?name=Ruby"
+      assert_equal 200, last_response.status
+      assert_match '<iframe name="messageBody" src="?name=Ruby&amp;part=text%2Fhtml">', last_response.body
+      assert_match '<option selected value="name=Ruby&amp;part=text%2Fhtml">', last_response.body
+      assert_match '<option  value="name=Ruby&amp;part=text%2Fplain">', last_response.body
+
+      get "/rails/mailers/notifier/foo?name=Ruby&part=text%2Fhtml"
+      assert_equal 200, last_response.status
+      assert_match %r[<p>Hello, Ruby!</p>], last_response.body
     end
 
     test "plain text mailer preview with attachment" do
       image_file "pixel.png", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEWzIioca/JlAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJgggo="
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
           def foo
-            attachments['pixel.png'] = File.read("#{app_path}/public/images/pixel.png", mode: 'rb')
+            attachments['pixel.png'] = File.binread("#{app_path}/public/images/pixel.png")
             mail to: "to@example.org"
           end
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -511,40 +665,47 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_equal 200, last_response.status
-      assert_match %r[<iframe seamless name="messageBody"], last_response.body
+      assert_match %r[<iframe name="messageBody"], last_response.body
 
       get "/rails/mailers/notifier/foo?part=text/plain"
       assert_equal 200, last_response.status
       assert_match %r[Hello, World!], last_response.body
+
+      get "/rails/mailers/download/notifier/foo"
+      assert_equal 200, last_response.status
+      email = Mail.read_from_string(last_response.body)
+      assert_equal 2, email.parts.size
+      assert_equal "text/plain; charset=UTF-8", email.parts[0].content_type
+      assert_equal "image/png; filename=pixel.png", email.parts[1].content_type
     end
 
     test "multipart mailer preview with attachment" do
       image_file "pixel.png", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEWzIioca/JlAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJgggo="
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
           def foo
-            attachments['pixel.png'] = File.read("#{app_path}/public/images/pixel.png", mode: 'rb')
+            attachments['pixel.png'] = File.binread("#{app_path}/public/images/pixel.png")
             mail to: "to@example.org"
           end
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      html_template 'notifier/foo', <<-RUBY
+      html_template "notifier/foo", <<-RUBY
         <p>Hello, World!</p>
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -552,11 +713,11 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_equal 200, last_response.status
-      assert_match %r[<iframe seamless name="messageBody"], last_response.body
+      assert_match %r[<iframe name="messageBody"], last_response.body
 
       get "/rails/mailers/notifier/foo?part=text/plain"
       assert_equal 200, last_response.status
@@ -570,27 +731,27 @@ module ApplicationTests
     test "multipart mailer preview with inline attachment" do
       image_file "pixel.png", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEWzIioca/JlAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJgggo="
 
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
           def foo
-            attachments['pixel.png'] = File.read("#{app_path}/public/images/pixel.png", mode: 'rb')
+            attachments['pixel.png'] = File.binread("#{app_path}/public/images/pixel.png")
             mail to: "to@example.org"
           end
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      html_template 'notifier/foo', <<-RUBY
+      html_template "notifier/foo", <<-RUBY
         <p>Hello, World!</p>
         <%= image_tag attachments['pixel.png'].url %>
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -598,11 +759,11 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_equal 200, last_response.status
-      assert_match %r[<iframe seamless name="messageBody"], last_response.body
+      assert_match %r[<iframe name="messageBody"], last_response.body
 
       get "/rails/mailers/notifier/foo?part=text/plain"
       assert_equal 200, last_response.status
@@ -615,7 +776,7 @@ module ApplicationTests
     end
 
     test "multipart mailer preview with attached email" do
-      mailer 'notifier', <<-RUBY
+      mailer "notifier", <<-RUBY
         class Notifier < ActionMailer::Base
           default from: "from@example.com"
 
@@ -640,15 +801,15 @@ module ApplicationTests
         end
       RUBY
 
-      text_template 'notifier/foo', <<-RUBY
+      text_template "notifier/foo", <<-RUBY
         Hello, World!
       RUBY
 
-      html_template 'notifier/foo', <<-RUBY
+      html_template "notifier/foo", <<-RUBY
         <p>Hello, World!</p>
       RUBY
 
-      mailer_preview 'notifier', <<-RUBY
+      mailer_preview "notifier", <<-RUBY
         class NotifierPreview < ActionMailer::Preview
           def foo
             Notifier.foo
@@ -656,11 +817,11 @@ module ApplicationTests
         end
       RUBY
 
-      app('development')
+      app("development")
 
       get "/rails/mailers/notifier/foo"
       assert_equal 200, last_response.status
-      assert_match %r[<iframe seamless name="messageBody"], last_response.body
+      assert_match %r[<iframe name="messageBody"], last_response.body
 
       get "/rails/mailers/notifier/foo?part=text/plain"
       assert_equal 200, last_response.status
@@ -671,10 +832,104 @@ module ApplicationTests
       assert_match %r[<p>Hello, World!</p>], last_response.body
     end
 
+    test "multipart mailer preview with empty parts" do
+      mailer "notifier", <<-RUBY
+        class Notifier < ActionMailer::Base
+          default from: "from@example.com"
+
+          def foo
+            mail to: "to@example.org"
+          end
+        end
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
+      RUBY
+
+      html_template "notifier/foo", <<-RUBY
+      RUBY
+
+      mailer_preview "notifier", <<-RUBY
+        class NotifierPreview < ActionMailer::Preview
+          def foo
+            Notifier.foo
+          end
+        end
+      RUBY
+
+      app("development")
+
+      get "/rails/mailers/notifier/foo?part=text/plain"
+      assert_equal 200, last_response.status
+
+      get "/rails/mailers/notifier/foo?part=text/html"
+      assert_equal 200, last_response.status
+    end
+
+    test "mailer preview title tag" do
+      mailer "notifier", <<-RUBY
+        class Notifier < ActionMailer::Base
+          default from: "from@example.com"
+
+          def foo
+            mail to: "to@example.org"
+          end
+        end
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
+        Hello, World!
+      RUBY
+
+      mailer_preview "notifier", <<-RUBY
+        class NotifierPreview < ActionMailer::Preview
+          def foo
+            Notifier.foo
+          end
+        end
+      RUBY
+
+      app("development")
+
+      get "/rails/mailers/notifier/foo"
+      assert_match "<title>Mailer Preview for notifier#foo</title>", last_response.body
+    end
+
+    test "mailer preview sender tags" do
+      mailer "notifier", <<-RUBY
+        class Notifier < ActionMailer::Base
+          default from: "from@example.com"
+          def foo
+            mail to: "to@example.org", cc: "cc@example.com", bcc: "bcc@example.com"
+          end
+        end
+      RUBY
+
+      text_template "notifier/foo", <<-RUBY
+        Hello, World!
+      RUBY
+
+      mailer_preview "notifier", <<-RUBY
+        class NotifierPreview < ActionMailer::Preview
+          def foo
+            Notifier.foo
+          end
+        end
+      RUBY
+
+      app("development")
+
+      get "/rails/mailers/notifier/foo"
+      assert_match "<dd id=\"to\">to@example.org</dd>", last_response.body
+      assert_match "<dd id=\"cc\">cc@example.com</dd>", last_response.body
+      assert_match "<dd id=\"bcc\">bcc@example.com</dd>", last_response.body
+    end
+
     private
       def build_app
         super
         app_file "config/routes.rb", "Rails.application.routes.draw do; end"
+        app_dir "test/mailers/previews"
       end
 
       def mailer(name, contents)
@@ -694,7 +949,7 @@ module ApplicationTests
       end
 
       def image_file(name, contents)
-        app_file("public/images/#{name}", Base64.strict_decode64(contents), 'wb')
+        app_file("public/images/#{name}", Base64.strict_decode64(contents), "wb")
       end
   end
 end

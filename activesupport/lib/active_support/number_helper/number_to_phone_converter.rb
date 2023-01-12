@@ -1,14 +1,18 @@
+# frozen_string_literal: true
+
+require "active_support/core_ext/object/blank"
+require "active_support/number_helper/number_converter"
+
 module ActiveSupport
   module NumberHelper
-    class NumberToPhoneConverter < NumberConverter #:nodoc:
+    class NumberToPhoneConverter < NumberConverter # :nodoc:
       def convert
-        str  = country_code(opts[:country_code])
+        str = country_code(opts[:country_code]).dup
         str << convert_to_phone_number(number.to_s.strip)
         str << phone_ext(opts[:extension])
       end
 
       private
-
         def convert_to_phone_number(number)
           if opts[:area_code]
             convert_with_area_code(number)
@@ -51,8 +55,6 @@ module ActiveSupport
         def regexp_pattern(default_pattern)
           opts.fetch :pattern, default_pattern
         end
-
     end
   end
 end
-

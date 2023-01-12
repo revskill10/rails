@@ -1,4 +1,6 @@
-module ActiveRecord #:nodoc:
+# frozen_string_literal: true
+
+module ActiveRecord # :nodoc:
   # = Active Record \Serialization
   module Serialization
     extend ActiveSupport::Concern
@@ -9,12 +11,19 @@ module ActiveRecord #:nodoc:
     end
 
     def serializable_hash(options = nil)
-      options = options.try(:clone) || {}
+      if self.class._has_attribute?(self.class.inheritance_column)
+        options = options ? options.dup : {}
 
-      options[:except] = Array(options[:except]).map(&:to_s)
-      options[:except] |= Array(self.class.inheritance_column)
+        options[:except] = Array(options[:except]).map(&:to_s)
+        options[:except] |= Array(self.class.inheritance_column)
+      end
 
       super(options)
     end
+
+    private
+      def attribute_names_for_serialization
+        attribute_names
+      end
   end
 end

@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require_relative "abstract_unit"
 
 class TestAutoloadModule < ActiveSupport::TestCase
   include ActiveSupport::Testing::Isolation
@@ -14,6 +16,11 @@ class TestAutoloadModule < ActiveSupport::TestCase
   def setup
     @some_class_path = File.expand_path("test/fixtures/autoload/some_class.rb")
     @another_class_path = File.expand_path("test/fixtures/autoload/another_class.rb")
+    $LOAD_PATH << "test"
+  end
+
+  def teardown
+    $LOAD_PATH.pop
   end
 
   test "the autoload module works like normal autoload" do
@@ -31,7 +38,7 @@ class TestAutoloadModule < ActiveSupport::TestCase
       end
     end
 
-    assert !$LOADED_FEATURES.include?(@some_class_path)
+    assert_not_includes $LOADED_FEATURES, @some_class_path
     assert_nothing_raised { ::Fixtures::Autoload::SomeClass }
   end
 
@@ -40,7 +47,7 @@ class TestAutoloadModule < ActiveSupport::TestCase
       autoload :SomeClass
     end
 
-    assert !$LOADED_FEATURES.include?(@some_class_path)
+    assert_not_includes $LOADED_FEATURES, @some_class_path
     assert_nothing_raised { ::Fixtures::Autoload::SomeClass }
   end
 
@@ -51,9 +58,9 @@ class TestAutoloadModule < ActiveSupport::TestCase
       end
     end
 
-    assert !$LOADED_FEATURES.include?(@some_class_path)
+    assert_not_includes $LOADED_FEATURES, @some_class_path
     ::Fixtures::Autoload.eager_load!
-    assert $LOADED_FEATURES.include?(@some_class_path)
+    assert_includes $LOADED_FEATURES, @some_class_path
     assert_nothing_raised { ::Fixtures::Autoload::SomeClass }
   end
 
@@ -64,7 +71,7 @@ class TestAutoloadModule < ActiveSupport::TestCase
       end
     end
 
-    assert !$LOADED_FEATURES.include?(@another_class_path)
+    assert_not_includes $LOADED_FEATURES, @another_class_path
     assert_nothing_raised { ::Fixtures::AnotherClass }
   end
 
@@ -75,7 +82,7 @@ class TestAutoloadModule < ActiveSupport::TestCase
       end
     end
 
-    assert !$LOADED_FEATURES.include?(@another_class_path)
+    assert_not_includes $LOADED_FEATURES, @another_class_path
     assert_nothing_raised { ::Fixtures::AnotherClass }
   end
 end

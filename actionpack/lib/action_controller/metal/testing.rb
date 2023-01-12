@@ -1,19 +1,22 @@
+# frozen_string_literal: true
+
 module ActionController
   module Testing
-    extend ActiveSupport::Concern
-
     # Behavior specific to functional tests
     module Functional # :nodoc:
+      def clear_instance_variables_between_requests
+        if defined?(@_ivars)
+          new_ivars = instance_variables - @_ivars
+          new_ivars.each { |ivar| remove_instance_variable(ivar) }
+        end
+
+        @_ivars = instance_variables
+      end
+
       def recycle!
         @_url_options = nil
         self.formats = nil
         self.params = nil
-      end
-    end
-
-    module ClassMethods
-      def before_filters
-        _process_action_callbacks.find_all{|x| x.kind == :before}.map(&:name)
       end
     end
   end

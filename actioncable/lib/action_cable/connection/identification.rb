@@ -1,4 +1,6 @@
-require 'set'
+# frozen_string_literal: true
+
+require "set"
 
 module ActionCable
   module Connection
@@ -6,11 +8,10 @@ module ActionCable
       extend ActiveSupport::Concern
 
       included do
-        class_attribute :identifiers
-        self.identifiers = Set.new
+        class_attribute :identifiers, default: Set.new
       end
 
-      class_methods do
+      module ClassMethods
         # Mark a key as being a connection identifier index that can then be used to find the specific connection again later.
         # Common identifiers are current_user and current_account, but could be anything, really.
         #
@@ -25,7 +26,7 @@ module ActionCable
       # Return a single connection identifier that combines the value of all the registered identifiers into a single gid.
       def connection_identifier
         unless defined? @connection_identifier
-          @connection_identifier = connection_gid identifiers.map { |id| instance_variable_get("@#{id}") }.compact
+          @connection_identifier = connection_gid identifiers.filter_map { |id| instance_variable_get("@#{id}") }
         end
 
         @connection_identifier

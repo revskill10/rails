@@ -1,19 +1,23 @@
-module ActionDispatch
-  module Journey # :nodoc:
-    class Route # :nodoc:
-      attr_reader :app, :path, :defaults, :name, :precedence
+# frozen_string_literal: true
 
-      attr_reader :constraints, :internal
+module ActionDispatch
+  # :stopdoc:
+  module Journey
+    class Route
+      attr_reader :app, :path, :defaults, :name, :precedence, :constraints,
+                  :internal, :scope_options, :ast
+
       alias :conditions :constraints
 
       module VerbMatchers
         VERBS = %w{ DELETE GET HEAD OPTIONS LINK PATCH POST PUT TRACE UNLINK }
         VERBS.each do |v|
-          class_eval <<-eoc
-          class #{v}
-            def self.verb; name.split("::").last; end
-            def self.call(req); req.#{v.downcase}?; end
-          end
+          class_eval <<-eoc, __FILE__, __LINE__ + 1
+            # frozen_string_literal: true
+            class #{v}
+              def self.verb; name.split("::").last; end
+              def self.call(req); req.#{v.downcase}?; end
+            end
           eoc
         end
 
@@ -24,21 +28,20 @@ module ActionDispatch
             @verb = verb
           end
 
-          def call(request); @verb === request.request_method; end
+          def call(request); @verb == request.request_method; end
         end
 
         class All
           def self.call(_); true; end
-          def self.verb; ''; end
+          def self.verb; ""; end
         end
 
-        VERB_TO_CLASS = VERBS.each_with_object({ :all => All }) do |verb, hash|
+        VERB_TO_CLASS = VERBS.each_with_object(all: All) do |verb, hash|
           klass = const_get verb
           hash[verb]                 = klass
           hash[verb.downcase]        = klass
           hash[verb.downcase.to_sym] = klass
         end
-
       end
 
       def self.verb_matcher(verb)
@@ -47,15 +50,10 @@ module ActionDispatch
         end
       end
 
-      def self.build(name, app, path, constraints, required_defaults, defaults)
-        request_method_match = verb_matcher(constraints.delete(:request_method))
-        new name, app, path, constraints, required_defaults, defaults, request_method_match, 0
-      end
-
       ##
       # +path+ is a path constraint.
       # +constraints+ is a hash of constraints to be applied to this route.
-      def initialize(name, app, path, constraints, required_defaults, defaults, request_method_match, precedence, internal = false)
+      def initialize(name:, app: nil, path:, constraints: {}, required_defaults: [], defaults: {}, request_method_match: nil, precedence: 0, scope_options: {}, internal: false)
         @name        = name
         @app         = app
         @path        = path
@@ -67,24 +65,33 @@ module ActionDispatch
         @_required_defaults = required_defaults
         @required_parts    = nil
         @parts             = nil
-        @decorated_ast     = nil
         @precedence        = precedence
         @path_formatter    = @path.build_formatter
+        @scope_options     = scope_options
         @internal          = internal
+
+        @ast = @path.ast.root
+        @path.ast.route = self
       end
 
-      def ast
-        @decorated_ast ||= begin
-          decorated_ast = path.ast
-          decorated_ast.find_all(&:terminal?).each { |n| n.memo = self }
-          decorated_ast
-        end
+      def eager_load!
+        path.eager_load!
+        parts
+        required_defaults
+        nil
       end
 
-      def requirements # :nodoc:
-        # needed for rails `rails routes`
-        @defaults.merge(path.requirements).delete_if { |_,v|
-          /.+?/ == v
+      # Needed for `bin/rails routes`. Picks up succinctly defined requirements
+      # for a route, for example route
+      #
+      #   get 'photo/:id', :controller => 'photos', :action => 'show',
+      #     :id => /[A-Z]\d{5}/
+      #
+      # will have {:controller=>"photos", :action=>"show", :id=>/[A-Z]\d{5}/}
+      # as requirements.
+      def requirements
+        @defaults.merge(path.requirements).delete_if { |_, v|
+          /.+?/m == v
         }
       end
 
@@ -96,14 +103,12 @@ module ActionDispatch
         required_parts + required_defaults.keys
       end
 
-      def score(constraints)
-        required_keys = path.required_names
-        supplied_keys = constraints.map { |k,v| v && k.to_s }.compact
+      def score(supplied_keys)
+        path.required_names.each do |k|
+          return -1 unless supplied_keys.include?(k)
+        end
 
-        return -1 unless (required_keys - supplied_keys).empty?
-
-        score = (supplied_keys & path.names).length
-        score + (required_defaults.length * 2)
+        (required_defaults.length * 2) + path.names.count { |k| supplied_keys.include?(k) }
       end
 
       def parts
@@ -124,13 +129,13 @@ module ActionDispatch
       end
 
       def required_defaults
-        @required_defaults ||= @defaults.dup.delete_if do |k,_|
+        @required_defaults ||= @defaults.dup.delete_if do |k, _|
           parts.include?(k) || !required_default?(k)
         end
       end
 
       def glob?
-        !path.spec.grep(Nodes::Star).empty?
+        path.ast.glob?
       end
 
       def dispatcher?
@@ -164,17 +169,18 @@ module ActionDispatch
       end
 
       def verb
-        verbs.join('|')
+        verbs.join("|")
       end
 
       private
-      def verbs
-        @request_method_match.map(&:verb)
-      end
+        def verbs
+          @request_method_match.map(&:verb)
+        end
 
-      def match_verb(request)
-        @request_method_match.any? { |m| m.call request }
-      end
+        def match_verb(request)
+          @request_method_match.any? { |m| m.call request }
+        end
     end
   end
+  # :startdoc:
 end

@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Ruby on Rails 5.0 Release Notes
 ===============================
@@ -15,7 +15,7 @@ Highlights in Rails 5.0:
 * Ruby 2.2.2+ required
 
 These release notes cover only the major changes. To learn about various bug
-fixes and changes, please refer to the change logs or check out the [list of
+fixes and changes, please refer to the changelogs or check out the [list of
 commits](https://github.com/rails/rails/commits/5-0-stable) in the main Rails
 repository on GitHub.
 
@@ -55,8 +55,8 @@ information.
 ### API Applications
 
 Rails can now be used to create slimmed down API only applications.
-This is useful for creating and serving APIs similar to [Twitter](https://dev.twitter.com) or [GitHub](http://developer.github.com) API, 
-that can be used to serve public facing, as well as, for custom applications.
+This is useful for creating and serving APIs similar to [Twitter](https://dev.twitter.com) or [GitHub](https://developer.github.com) API,
+that can be used to serve public-facing, as well as, for custom applications.
 
 You can generate a new api Rails app using:
 
@@ -73,12 +73,12 @@ This will do three main things:
   `ActionController::Base`. As with middleware, this will leave out any Action
   Controller modules that provide functionalities primarily used by browser
   applications.
-- Configure the generators to skip generating views, helpers and assets when
-  you generate a new resource. 
+- Configure the generators to skip generating views, helpers, and assets when
+  you generate a new resource.
 
-The application provides a base for APIs, 
-that can then be [configured to pull in functionality](api_app.html) as suitable for the application's needs.  
- 
+The application provides a base for APIs,
+that can then be [configured to pull in functionality](api_app.html) as suitable for the application's needs.
+
 See the [Using Rails for API-only Applications](api_app.html) guide for more
 information.
 
@@ -86,27 +86,30 @@ information.
 
 Defines an attribute with a type on a model. It will override the type of existing attributes if needed.
 This allows control over how values are converted to and from SQL when assigned to a model.
-It also changes the behavior of values passed to `ActiveRecord::Base.where`, which lets use our domain objects across much of Active Record,
+It also changes the behavior of values passed to `ActiveRecord::Base.where`, which let's use our domain objects across much of Active Record,
 without having to rely on implementation details or monkey patching.
 
 Some things that you can achieve with this:
 
-* The type detected by Active Record can be overridden.
-* A default can also be provided.
-* Attributes do not need to be backed by a database column.
+- The type detected by Active Record can be overridden.
+- A default can also be provided.
+- Attributes do not need to be backed by a database column.
 
 ```ruby
-
 # db/schema.rb
 create_table :store_listings, force: true do |t|
   t.decimal :price_in_cents
   t.string :my_string, default: "original default"
 end
+```
 
+```ruby
 # app/models/store_listing.rb
 class StoreListing < ActiveRecord::Base
 end
+```
 
+```ruby
 store_listing = StoreListing.new(price_in_cents: '10.1')
 
 # before
@@ -125,7 +128,7 @@ store_listing.price_in_cents # => 10
 StoreListing.new.my_string # => "new default"
 StoreListing.new.my_default_proc # => 2015-05-30 11:04:48 -0600
 model = StoreListing.new(field_without_db_column: ["1", "2", "3"])
-model.attributes #=> {field_without_db_column: [1, 2, 3]}
+model.attributes # => {field_without_db_column: [1, 2, 3]}
 ```
 
 **Creating Custom Types:**
@@ -146,11 +149,11 @@ This gives the objects ability to specify, how to convert values when performing
 
 **Dirty Tracking:**
 
-The type of an attribute is given the opportunity to change how dirty
+The type of an attribute is allowed to change how dirty
 tracking is performed.
 
 See its
-[documentation](http://api.rubyonrails.org/classes/ActiveRecord/Attributes/ClassMethods.html)
+[documentation](https://api.rubyonrails.org/v5.0.1/classes/ActiveRecord/Attributes/ClassMethods.html)
 for a detailed write up.
 
 
@@ -159,7 +162,7 @@ for a detailed write up.
 A new test runner has been introduced to enhance the capabilities of running tests from Rails.
 To use this test runner simply type `bin/rails test`.
 
-Test Runner is inspired from `RSpec`, `minitest-reporters`, `maxitest` and others.
+Test Runner is inspired by `RSpec`, `minitest-reporters`, `maxitest` and others.
 It includes some of these notable advancements:
 
 - Run a single test using line number of test.
@@ -169,9 +172,9 @@ It includes some of these notable advancements:
 instead of waiting for the suite to complete.
 - Defer test output until the end of a full test run using the `-d` option.
 - Complete exception backtrace output using `-b` option.
-- Integration with `Minitest` to allow options like `-s` for test seed data,
+- Integration with minitest to allow options like `-s` for test seed data,
 `-n` for running specific test by name, `-v` for better verbose output and so forth.
-- Colored test output
+- Colored test output.
 
 Railties
 --------
@@ -206,13 +209,13 @@ Please refer to the [Changelog][railties] for detailed changes.
 
 *   Deprecated `config.static_cache_control` in favor of
     `config.public_file_server.headers`.
-    ([Pull Request](https://github.com/rails/rails/pull/22173))
+    ([Pull Request](https://github.com/rails/rails/pull/19135))
 
 *   Deprecated `config.serve_static_files` in favor of `config.public_file_server.enabled`.
     ([Pull Request](https://github.com/rails/rails/pull/22173))
 
 *   Deprecated the tasks in the `rails` task namespace in favor of the `app` namespace.
-    (e.g. `rails:update` and `rails:template` tasks is renamed to `app:update` and `app:template`.)
+    (e.g. `rails:update` and `rails:template` tasks are renamed to `app:update` and `app:template`.)
     ([Pull Request](https://github.com/rails/rails/pull/23439))
 
 ### Notable changes
@@ -242,7 +245,7 @@ Please refer to the [Changelog][railties] for detailed changes.
      [Pull Request](https://github.com/rails/rails/pull/22288))
 
 *   New applications are generated with the evented file system monitor enabled
-    on Linux and Mac OS X. The feature can be opted out by passing
+    on Linux and macOS. The feature can be opted out by passing
     `--skip-listen` to the generator.
     ([commit](https://github.com/rails/rails/commit/de6ad5665d2679944a9ee9407826ba88395a1003),
     [commit](https://github.com/rails/rails/commit/94dbc48887bf39c241ee2ce1741ee680d773f202))
@@ -251,7 +254,7 @@ Please refer to the [Changelog][railties] for detailed changes.
     using the environment variable `RAILS_LOG_TO_STDOUT`.
     ([Pull Request](https://github.com/rails/rails/pull/23734))
 
-*   Enable HSTS with IncludeSudomains header for new applications.
+*   Enable HSTS with IncludeSubdomains header for new applications.
     ([Pull Request](https://github.com/rails/rails/pull/23852))
 
 *   The application generator writes a new file `config/spring.rb`, which tells
@@ -346,8 +349,8 @@ Please refer to the [Changelog][action-pack] for detailed changes.
     names instead.
     ([commit](https://github.com/rails/rails/commit/83b767ce))
 
-*   Deprecated accessing mime types via constants (eg. `Mime::HTML`). Use the
-    subscript operator with a symbol instead (eg. `Mime[:html]`).
+*   Deprecated accessing MIME types via constants (e.g. `Mime::HTML`). Use the
+    subscript operator with a symbol instead (e.g. `Mime[:html]`).
     ([Pull Request](https://github.com/rails/rails/pull/21869))
 
 *   Deprecated `redirect_to :back` in favor of `redirect_back`, which accepts a
@@ -394,7 +397,7 @@ Please refer to the [Changelog][action-pack] for detailed changes.
 *   Added the ability to override default form builder for a controller.
     ([Pull Request](https://github.com/rails/rails/pull/19736))
 
-*   Added support for API only apps.
+*   Added support for API-only apps.
     `ActionController::API` is added as a replacement of
     `ActionController::Base` for this kind of applications.
     ([Pull Request](https://github.com/rails/rails/pull/19832))
@@ -417,7 +420,7 @@ Please refer to the [Changelog][action-pack] for detailed changes.
     `ActionDispatch::IntegrationTest` instead.
     ([commit](https://github.com/rails/rails/commit/4414c5d1795e815b102571425974a8b1d46d932d))
 
-*   Rails will only generate "weak", instead of strong ETags.
+*   Rails generates weak ETags by default.
     ([Pull Request](https://github.com/rails/rails/pull/17573))
 
 *   Controller actions without an explicit `render` call and with no
@@ -431,11 +434,6 @@ Please refer to the [Changelog][action-pack] for detailed changes.
 
 *   Added request encoding and response parsing to integration tests.
     ([Pull Request](https://github.com/rails/rails/pull/21671))
-
-*   Update default rendering policies when the controller action did
-    not explicitly indicate a response.
-    ([Pull Request](https://github.com/rails/rails/pull/23827))
-
 
 *   Add `ActionController#helpers` to get access to the view context
     at the controller level.
@@ -458,6 +456,9 @@ Please refer to the [Changelog][action-pack] for detailed changes.
     `ActionController::Live`.
     ([More details in this issue](https://github.com/rails/rails/issues/25581))
 
+*   Introduce `Response#strong_etag=` and `#weak_etag=` and analogous
+    options for `fresh_when` and `stale?`.
+    ([Pull Request](https://github.com/rails/rails/pull/24387))
 
 Action View
 -------------
@@ -500,6 +501,9 @@ Please refer to the [Changelog][action-view] for detailed changes.
 *   The `datetime_tag` helper now generates an input tag with the type of
     `datetime-local`.
     ([Pull Request](https://github.com/rails/rails/pull/25469))
+
+*   Allow blocks while rendering with the `render partial:` helper.
+    ([Pull Request](https://github.com/rails/rails/pull/17974))
 
 Action Mailer
 -------------
@@ -587,8 +591,8 @@ Please refer to the [Changelog][active-record] for detailed changes.
     gem. ([Pull Request](https://github.com/rails/rails/pull/21161))
 
 *   Removed support for the legacy `mysql` database adapter from core. Most users should
-    be able to use `mysql2`. It will be converted to a separate gem when when we find someone
-    to maintain it. ([Pull Request 1](https://github.com/rails/rails/pull/22642)],
+    be able to use `mysql2`. It will be converted to a separate gem when we find someone
+    to maintain it. ([Pull Request 1](https://github.com/rails/rails/pull/22642),
     [Pull Request 2](https://github.com/rails/rails/pull/22715))
 
 *   Removed support for the `protected_attributes` gem.
@@ -599,6 +603,9 @@ Please refer to the [Changelog][active-record] for detailed changes.
 
 *   Removed support for `activerecord-deprecated_finders` gem.
     ([commit](https://github.com/rails/rails/commit/78dab2a8569408658542e462a957ea5a35aa4679))
+
+*   Removed `ActiveRecord::ConnectionAdapters::Column::TRUE_VALUES` constant.
+    ([commit](https://github.com/rails/rails/commit/a502703c3d2151d4d3b421b29fefdac5ad05df61))
 
 ### Deprecations
 
@@ -703,9 +710,6 @@ Please refer to the [Changelog][active-record] for detailed changes.
     operator to combine WHERE or HAVING clauses.
     ([commit](https://github.com/rails/rails/commit/b0b37942d729b6bdcd2e3178eda7fa1de203b3d0))
 
-*   Added `:time` option added for `#touch`.
-    ([Pull Request](https://github.com/rails/rails/pull/18956))
-
 *   Added `ActiveRecord::Base.suppress` to prevent the receiver from being saved
     during the given block.
     ([Pull Request](https://github.com/rails/rails/pull/18910))
@@ -774,7 +778,7 @@ Please refer to the [Changelog][active-record] for detailed changes.
 
 *   Added prepared statements support to `mysql2` adapter, for mysql2 0.4.4+,
     Previously this was only supported on the deprecated `mysql` legacy adapter.
-    To enable, set `prepared_statements: true` in config/database.yml.
+    To enable, set `prepared_statements: true` in `config/database.yml`.
     ([Pull Request](https://github.com/rails/rails/pull/23461))
 
 *   Added ability to call `ActionRecord::Relation#update` on relation objects
@@ -804,6 +808,15 @@ Please refer to the [Changelog][active-record] for detailed changes.
 *   Added `:time` option to `touch` method to touch records with different time
     than the current time.
     ([Pull Request](https://github.com/rails/rails/pull/18956))
+
+*   Change transaction callbacks to not swallow errors.
+    Before this change any errors raised inside a transaction callback
+    were getting rescued and printed in the logs, unless you used
+    the (newly deprecated) `raise_in_transactional_callbacks = true` option.
+
+    Now these errors are not rescued anymore and just bubble up, matching the
+    behavior of other callbacks.
+    ([commit](https://github.com/rails/rails/commit/07d3d402341e81ada0214f2cb2be1da69eadfe72))
 
 Active Model
 ------------
@@ -962,8 +975,10 @@ Please refer to the [Changelog][active-support] for detailed changes.
     `ActiveSupport::Cache::MemCachedStore#escape_key`, and
     `ActiveSupport::Cache::FileStore#key_file_path`.
     Use `normalize_key` instead.
+    ([Pull Request](https://github.com/rails/rails/pull/22215),
+     [commit](https://github.com/rails/rails/commit/a8f773b0))
 
-    Deprecated `ActiveSupport::Cache::LocaleCache#set_cache_value` in favor of `write_cache_value`.
+*   Deprecated `ActiveSupport::Cache::LocaleCache#set_cache_value` in favor of `write_cache_value`.
     ([Pull Request](https://github.com/rails/rails/pull/22215))
 
 *   Deprecated passing arguments to `assert_nothing_raised`.
@@ -985,7 +1000,7 @@ Please refer to the [Changelog][active-support] for detailed changes.
 
 *   New config option
     `config.active_support.halt_callback_chains_on_return_false` to specify
-    whether ActiveRecord, ActiveModel and ActiveModel::Validations callback
+    whether ActiveRecord, ActiveModel, and ActiveModel::Validations callback
     chains can be halted by returning `false` in a 'before' callback.
     ([Pull Request](https://github.com/rails/rails/pull/17227))
 
@@ -994,7 +1009,8 @@ Please refer to the [Changelog][active-support] for detailed changes.
 
 *   Added `#on_weekend?`, `#on_weekday?`, `#next_weekday`, `#prev_weekday` methods to `Date`,
     `Time`, and `DateTime`.
-    ([Pull Request](https://github.com/rails/rails/pull/18335))
+    ([Pull Request](https://github.com/rails/rails/pull/18335),
+     [Pull Request](https://github.com/rails/rails/pull/23687))
 
 *   Added `same_time` option to `#next_week` and `#prev_week` for `Date`, `Time`,
     and `DateTime`.
@@ -1002,7 +1018,7 @@ Please refer to the [Changelog][active-support] for detailed changes.
 
 *   Added `#prev_day` and `#next_day` counterparts to `#yesterday` and
     `#tomorrow` for `Date`, `Time`, and `DateTime`.
-    ([Pull Request](httpshttps://github.com/rails/rails/pull/18335))
+    ([Pull Request](https://github.com/rails/rails/pull/18335))
 
 *   Added `SecureRandom.base58` for generation of random base58 strings.
     ([commit](https://github.com/rails/rails/commit/b1093977110f18ae0cafe56c3d99fc22a7d54d1b))
@@ -1045,9 +1061,6 @@ Please refer to the [Changelog][active-support] for detailed changes.
 *   Added `Array#second_to_last` and `Array#third_to_last` methods.
     ([Pull Request](https://github.com/rails/rails/pull/23583))
 
-*   Added `#on_weekday?` method to `Date`, `Time`, and `DateTime`.
-    ([Pull Request](https://github.com/rails/rails/pull/23687))
-
 *   Publish `ActiveSupport::Executor` and `ActiveSupport::Reloader` APIs to allow
     components and libraries to manage, and participate in, the execution of
     application code, and the application reloading process.
@@ -1071,7 +1084,7 @@ Credits
 -------
 
 See the
-[full list of contributors to Rails](http://contributors.rubyonrails.org/) for
+[full list of contributors to Rails](https://contributors.rubyonrails.org/) for
 the many people who spent many hours making Rails, the stable and robust
 framework it is. Kudos to all of them.
 

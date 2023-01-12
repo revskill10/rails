@@ -1,10 +1,13 @@
+# frozen_string_literal: true
+
 module ActionDispatch
-  module Journey # :nodoc:
+  # :stopdoc:
+  module Journey
     class Format
       ESCAPE_PATH    = ->(value) { Router::Utils.escape_path(value) }
       ESCAPE_SEGMENT = ->(value) { Router::Utils.escape_segment(value) }
 
-      class Parameter < Struct.new(:name, :escaper)
+      Parameter = Struct.new(:name, :escaper) do
         def escape(value); escaper.call value; end
       end
 
@@ -21,7 +24,7 @@ module ActionDispatch
         @children   = []
         @parameters = []
 
-        parts.each_with_index do |object,i|
+        parts.each_with_index do |object, i|
           case object
           when Journey::Format
             @children << i
@@ -37,7 +40,7 @@ module ActionDispatch
         @parameters.each do |index|
           param = parts[index]
           value = hash[param.name]
-          return ''.freeze unless value
+          return "" if value.nil?
           parts[index] = param.escape value
         end
 
@@ -56,8 +59,7 @@ module ActionDispatch
         end
 
         private
-
-          def visit node
+          def visit(node)
             send(DISPATCH_CACHE[node.type], node)
           end
 
@@ -97,7 +99,7 @@ module ActionDispatch
           visit(node, seed)
         end
 
-        def visit node, seed
+        def visit(node, seed)
           send(DISPATCH_CACHE[node.type], node, seed)
         end
 
@@ -153,7 +155,7 @@ module ActionDispatch
         end
       end
 
-      # Loop through the requirements AST
+      # Loop through the requirements AST.
       class Each < FunctionalVisitor # :nodoc:
         def visit(node, block)
           block.call(node)
@@ -165,29 +167,28 @@ module ActionDispatch
 
       class String < FunctionalVisitor # :nodoc:
         private
+          def binary(node, seed)
+            visit(node.right, visit(node.left, seed))
+          end
 
-        def binary(node, seed)
-          visit(node.right, visit(node.left, seed))
-        end
+          def nary(node, seed)
+            last_child = node.children.last
+            node.children.inject(seed) { |s, c|
+              string = visit(c, s)
+              string << "|" unless last_child == c
+              string
+            }
+          end
 
-        def nary(node, seed)
-          last_child = node.children.last
-          node.children.inject(seed) { |s, c|
-            string = visit(c, s)
-            string << "|".freeze unless last_child == c
-            string
-          }
-        end
+          def terminal(node, seed)
+            seed + node.left
+          end
 
-        def terminal(node, seed)
-          seed + node.left
-        end
+          def visit_GROUP(node, seed)
+            visit(node.left, seed.dup << "(") << ")"
+          end
 
-        def visit_GROUP(node, seed)
-          visit(node.left, seed << "(".freeze) << ")".freeze
-        end
-
-        INSTANCE = new
+          INSTANCE = new
       end
 
       class Dot < FunctionalVisitor # :nodoc:
@@ -211,7 +212,6 @@ module ActionDispatch
         end
 
         private
-
           def binary(node, seed)
             seed.last.concat node.children.map { |c|
               "#{node.object_id} -> #{c.object_id};"
@@ -261,4 +261,5 @@ module ActionDispatch
       end
     end
   end
+  # :startdoc:
 end

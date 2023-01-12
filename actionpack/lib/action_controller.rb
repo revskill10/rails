@@ -1,8 +1,10 @@
-require 'active_support/rails'
-require 'abstract_controller'
-require 'action_dispatch'
-require 'action_controller/metal/live'
-require 'action_controller/metal/strong_parameters'
+# frozen_string_literal: true
+
+require "abstract_controller"
+require "action_dispatch"
+require "action_controller/deprecator"
+require "action_controller/metal/strong_parameters"
+require "action_controller/metal/exceptions"
 
 module ActionController
   extend ActiveSupport::Autoload
@@ -10,7 +12,6 @@ module ActionController
   autoload :API
   autoload :Base
   autoload :Metal
-  autoload :Middleware
   autoload :Renderer
   autoload :FormBuilder
 
@@ -20,17 +21,22 @@ module ActionController
 
   autoload_under "metal" do
     autoload :ConditionalGet
+    autoload :ContentSecurityPolicy
     autoload :Cookies
     autoload :DataStreaming
+    autoload :DefaultHeaders
     autoload :EtagWithTemplateDigest
+    autoload :EtagWithFlash
+    autoload :PermissionsPolicy
     autoload :Flash
-    autoload :ForceSSL
     autoload :Head
     autoload :Helpers
     autoload :HttpAuthentication
     autoload :BasicImplicitRender
     autoload :ImplicitRender
     autoload :Instrumentation
+    autoload :Live
+    autoload :Logging
     autoload :MimeResponds
     autoload :ParamsWrapper
     autoload :Redirecting
@@ -40,6 +46,7 @@ module ActionController
     autoload :Rescue
     autoload :Streaming
     autoload :StrongParameters
+    autoload :ParameterEncoding
     autoload :Testing
     autoload :UrlFor
   end
@@ -48,14 +55,13 @@ module ActionController
     autoload :ApiRendering
   end
 
-  autoload :TestCase,           'action_controller/test_case'
-  autoload :TemplateAssertions, 'action_controller/test_case'
+  autoload :TestCase,           "action_controller/test_case"
+  autoload :TemplateAssertions, "action_controller/test_case"
 end
 
 # Common Active Support usage in Action Controller
-require 'active_support/core_ext/module/attribute_accessors'
-require 'active_support/core_ext/load_error'
-require 'active_support/core_ext/module/attr_internal'
-require 'active_support/core_ext/name_error'
-require 'active_support/core_ext/uri'
-require 'active_support/inflector'
+require "active_support/core_ext/module/attribute_accessors"
+require "active_support/core_ext/load_error"
+require "active_support/core_ext/module/attr_internal"
+require "active_support/core_ext/name_error"
+require "active_support/inflector"

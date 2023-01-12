@@ -1,10 +1,13 @@
-require 'action_controller/metal/exceptions'
+# frozen_string_literal: true
+
+require "action_controller/metal/exceptions"
 
 module ActionDispatch
+  # :stopdoc:
   module Journey
     # The Formatter class is used for formatting URLs. For example, parameters
     # passed to +url_for+ in Rails will eventually call Formatter#generate.
-    class Formatter # :nodoc:
+    class Formatter
       attr_reader :routes
 
       def initialize(routes)
@@ -12,12 +15,53 @@ module ActionDispatch
         @cache  = nil
       end
 
-      def generate(name, options, path_parameters, parameterize = nil)
+      class RouteWithParams
+        attr_reader :params
+
+        def initialize(route, parameterized_parts, params)
+          @route = route
+          @parameterized_parts = parameterized_parts
+          @params = params
+        end
+
+        def path(_)
+          @route.format(@parameterized_parts)
+        end
+      end
+
+      class MissingRoute
+        attr_reader :routes, :name, :constraints, :missing_keys, :unmatched_keys
+
+        def initialize(constraints, missing_keys, unmatched_keys, routes, name)
+          @constraints = constraints
+          @missing_keys = missing_keys
+          @unmatched_keys = unmatched_keys
+          @routes = routes
+          @name = name
+        end
+
+        def path(method_name)
+          raise ActionController::UrlGenerationError.new(message, routes, name, method_name)
+        end
+
+        def params
+          path("unknown")
+        end
+
+        def message
+          message = +"No route matches #{Hash[constraints.sort_by { |k, v| k.to_s }].inspect}"
+          message << ", missing required keys: #{missing_keys.sort.inspect}" if missing_keys && !missing_keys.empty?
+          message << ", possible unmatched constraints: #{unmatched_keys.sort.inspect}" if unmatched_keys && !unmatched_keys.empty?
+          message
+        end
+      end
+
+      def generate(name, options, path_parameters)
         constraints = path_parameters.merge(options)
-        missing_keys = nil # need for variable scope
+        missing_keys = nil
 
         match_route(name, constraints) do |route|
-          parameterized_parts = extract_parameterized_parts(route, options, path_parameters, parameterize)
+          parameterized_parts = extract_parameterized_parts(route, options, path_parameters)
 
           # Skip this route unless a name has been provided or it is a
           # standard Rails route since we can't determine whether an options
@@ -35,19 +79,19 @@ module ActionDispatch
 
           route.parts.reverse_each do |key|
             break if defaults[key].nil? && parameterized_parts[key].present?
-            break if parameterized_parts[key].to_s != defaults[key].to_s
+            next if parameterized_parts[key].to_s != defaults[key].to_s
             break if required_parts.include?(key)
 
             parameterized_parts.delete(key)
           end
 
-          return [route.format(parameterized_parts), params]
+          return RouteWithParams.new(route, parameterized_parts, params)
         end
 
-        message = "No route matches #{Hash[constraints.sort_by{|k,v| k.to_s}].inspect}"
-        message << " missing required keys: #{missing_keys.sort.inspect}" if missing_keys && !missing_keys.empty?
+        unmatched_keys = (missing_keys || []) & constraints.keys
+        missing_keys = (missing_keys || []) - unmatched_keys
 
-        raise ActionController::UrlGenerationError, message
+        MissingRoute.new(constraints, missing_keys, unmatched_keys, routes, name)
       end
 
       def clear
@@ -55,25 +99,26 @@ module ActionDispatch
       end
 
       private
-
-        def extract_parameterized_parts(route, options, recall, parameterize = nil)
+        def extract_parameterized_parts(route, options, recall)
           parameterized_parts = recall.merge(options)
 
           keys_to_keep = route.parts.reverse_each.drop_while { |part|
-            !options.key?(part) || (options[part] || recall[part]).nil?
+            !(options.key?(part) || route.scope_options.key?(part)) || (options[part].nil? && recall[part].nil?)
           } | route.required_parts
 
           parameterized_parts.delete_if do |bad_key, _|
             !keys_to_keep.include?(bad_key)
           end
 
-          if parameterize
-            parameterized_parts.each do |k, v|
-              parameterized_parts[k] = parameterize.call(k, v)
+          parameterized_parts.each do |k, v|
+            if k == :controller
+              parameterized_parts[k] = v
+            else
+              parameterized_parts[k] = v.to_param
             end
           end
 
-          parameterized_parts.keep_if { |_, v| v }
+          parameterized_parts.compact!
           parameterized_parts
         end
 
@@ -87,7 +132,11 @@ module ActionDispatch
           else
             routes = non_recursive(cache, options)
 
-            hash = routes.group_by { |_, r| r.score(options) }
+            supplied_keys = options.each_with_object({}) do |(k, v), h|
+              h[k.to_s] = true if v
+            end
+
+            hash = routes.group_by { |_, r| r.score(supplied_keys) }
 
             hash.keys.sort.reverse_each do |score|
               break if score < 0
@@ -115,19 +164,10 @@ module ActionDispatch
           routes
         end
 
-        module RegexCaseComparator
-          DEFAULT_INPUT = /[-_.a-zA-Z0-9]+\/[-_.a-zA-Z0-9]+/
-          DEFAULT_REGEX = /\A#{DEFAULT_INPUT}\Z/
-
-          def self.===(regex)
-            DEFAULT_INPUT == regex
-          end
-        end
-
         # Returns an array populated with missing keys if any are present.
         def missing_keys(route, parts)
           missing_keys = nil
-          tests = route.path.requirements
+          tests = route.path.requirements_for_missing_keys_check
           route.required_parts.each { |key|
             case tests[key]
             when nil
@@ -135,13 +175,8 @@ module ActionDispatch
                 missing_keys ||= []
                 missing_keys << key
               end
-            when RegexCaseComparator
-              unless RegexCaseComparator::DEFAULT_REGEX === parts[key]
-                missing_keys ||= []
-                missing_keys << key
-              end
             else
-              unless /\A#{tests[key]}\Z/ === parts[key]
+              unless tests[key].match?(parts[key])
                 missing_keys ||= []
                 missing_keys << key
               end
@@ -174,4 +209,5 @@ module ActionDispatch
         end
     end
   end
+  # :startdoc:
 end

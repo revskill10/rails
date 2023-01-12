@@ -1,4 +1,6 @@
-require 'active_support/core_ext/hash/slice'
+# frozen_string_literal: true
+
+require "active_support/core_ext/hash/slice"
 
 module ActiveModel
   module Validations
@@ -10,6 +12,7 @@ module ActiveModel
       #
       # Examples of using the default rails validators:
       #
+      #   validates :username, absence: true
       #   validates :terms, acceptance: true
       #   validates :password, confirmation: true
       #   validates :username, exclusion: { in: %w(admin superuser) }
@@ -18,7 +21,6 @@ module ActiveModel
       #   validates :first_name, length: { maximum: 30 }
       #   validates :age, numericality: true
       #   validates :username, presence: true
-      #   validates :username, uniqueness: true
       #
       # The power of the +validates+ method comes when using custom validators
       # and default validators in one call for a given attribute.
@@ -26,7 +28,7 @@ module ActiveModel
       #   class EmailValidator < ActiveModel::EachValidator
       #     def validate_each(record, attribute, value)
       #       record.errors.add attribute, (options[:message] || "is not an email") unless
-      #         value =~ /\A([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})\z/i
+      #         /\A([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})\z/i.match?(value)
       #     end
       #   end
       #
@@ -34,7 +36,7 @@ module ActiveModel
       #     include ActiveModel::Validations
       #     attr_accessor :name, :email
       #
-      #     validates :name, presence: true, uniqueness: true, length: { maximum: 100 }
+      #     validates :name, presence: true, length: { maximum: 100 }
       #     validates :email, presence: true, email: true
       #   end
       #
@@ -46,7 +48,7 @@ module ActiveModel
       #
       #     class TitleValidator < ActiveModel::EachValidator
       #       def validate_each(record, attribute, value)
-      #         record.errors.add attribute, "must start with 'the'" unless value =~ /\Athe/i
+      #         record.errors.add attribute, "must start with 'the'" unless /\Athe/i.match?(value)
       #       end
       #     end
       #
@@ -62,7 +64,7 @@ module ActiveModel
       # and strings in shortcut form.
       #
       #   validates :email, format: /@/
-      #   validates :gender, inclusion: %w(male female)
+      #   validates :role, inclusion: %w(admin contributor)
       #   validates :password, length: 6..20
       #
       # When using shortcut form, ranges and arrays are passed to your
@@ -72,18 +74,18 @@ module ActiveModel
       # There is also a list of options that could be used along with validators:
       #
       # * <tt>:on</tt> - Specifies the contexts where this validation is active.
-      #   Runs in all validation contexts by default (nil). You can pass a symbol
+      #   Runs in all validation contexts by default +nil+. You can pass a symbol
       #   or an array of symbols. (e.g. <tt>on: :create</tt> or
       #   <tt>on: :custom_validation_context</tt> or
       #   <tt>on: [:create, :custom_validation_context]</tt>)
-      # * <tt>:if</tt> - Specifies a method, proc or string to call to determine
+      # * <tt>:if</tt> - Specifies a method, proc, or string to call to determine
       #   if the validation should occur (e.g. <tt>if: :allow_validation</tt>,
       #   or <tt>if: Proc.new { |user| user.signup_step > 2 }</tt>). The method,
       #   proc or string should return or evaluate to a +true+ or +false+ value.
-      # * <tt>:unless</tt> - Specifies a method, proc or string to call to determine
+      # * <tt>:unless</tt> - Specifies a method, proc, or string to call to determine
       #   if the validation should not occur (e.g. <tt>unless: :skip_validation</tt>,
       #   or <tt>unless: Proc.new { |user| user.signup_step <= 2 }</tt>). The
-      #   method, proc or string should return or evaluate to a +true+ or
+      #   method, proc, or string should return or evaluate to a +true+ or
       #   +false+ value.
       # * <tt>:allow_nil</tt> - Skip validation if the attribute is +nil+.
       # * <tt>:allow_blank</tt> - Skip validation if the attribute is blank.
@@ -94,7 +96,7 @@ module ActiveModel
       # Example:
       #
       #   validates :password, presence: true, confirmation: true, if: :password_required?
-      #   validates :token, uniqueness: true, strict: TokenGenerationException
+      #   validates :token, length: { is: 24 }, strict: TokenLengthException
       #
       #
       # Finally, the options +:if+, +:unless+, +:on+, +:allow_blank+, +:allow_nil+, +:strict+
@@ -111,14 +113,15 @@ module ActiveModel
         defaults[:attributes] = attributes
 
         validations.each do |key, options|
-          next unless options
           key = "#{key.to_s.camelize}Validator"
 
           begin
-            validator = key.include?('::'.freeze) ? key.constantize : const_get(key)
+            validator = const_get(key)
           rescue NameError
             raise ArgumentError, "Unknown validator: '#{key}'"
           end
+
+          next unless options
 
           validates_with(validator, defaults.merge(_parse_validates_options(options)))
         end
@@ -148,15 +151,14 @@ module ActiveModel
         validates(*(attributes << options))
       end
 
-    protected
-
+    private
       # When creating custom validators, it might be useful to be able to specify
       # additional default keys. This can be done by overwriting this method.
-      def _validates_default_keys # :nodoc:
-        [:if, :unless, :on, :allow_blank, :allow_nil , :strict]
+      def _validates_default_keys
+        [:if, :unless, :on, :allow_blank, :allow_nil, :strict]
       end
 
-      def _parse_validates_options(options) # :nodoc:
+      def _parse_validates_options(options)
         case options
         when TrueClass
           {}

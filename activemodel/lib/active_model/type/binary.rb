@@ -1,6 +1,12 @@
+# frozen_string_literal: true
+
 module ActiveModel
   module Type
-    class Binary < Value # :nodoc:
+    # Attribute type for representation of binary data. This type is registered
+    # under the +:binary+ key.
+    #
+    # Non-string values are coerced to strings using their +to_s+ method.
+    class Binary < Value
       def type
         :binary
       end
@@ -38,7 +44,7 @@ module ActiveModel
         alias_method :to_str, :to_s
 
         def hex
-          @value.unpack('H*')[0]
+          @value.unpack1("H*")
         end
 
         def ==(other)

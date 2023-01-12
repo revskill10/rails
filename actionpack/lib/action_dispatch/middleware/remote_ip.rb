@@ -1,18 +1,18 @@
-require 'ipaddr'
+# frozen_string_literal: true
+
+require "ipaddr"
 
 module ActionDispatch
   # This middleware calculates the IP address of the remote client that is
   # making the request. It does this by checking various headers that could
   # contain the address, and then picking the last-set address that is not
   # on the list of trusted IPs. This follows the precedent set by e.g.
-  # {the Tomcat server}[https://issues.apache.org/bugzilla/show_bug.cgi?id=50453],
-  # with {reasoning explained at length}[http://blog.gingerlime.com/2012/rails-ip-spoofing-vulnerabilities-and-protection]
-  # by @gingerlime. A more detailed explanation of the algorithm is given
-  # at GetIp#calculate_ip.
+  # {the Tomcat server}[https://issues.apache.org/bugzilla/show_bug.cgi?id=50453].
+  # A more detailed explanation of the algorithm is given at GetIp#calculate_ip.
   #
-  # Some Rack servers concatenate repeated headers, like {HTTP RFC 2616}[http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2]
+  # Some Rack servers concatenate repeated headers, like {HTTP RFC 2616}[https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2]
   # requires. Some Rack servers simply drop preceding headers, and only report
-  # the value that was {given in the last header}[http://andre.arko.net/2011/12/26/repeated-headers-and-ruby-web-servers].
+  # the value that was {given in the last header}[https://andre.arko.net/2011/12/26/repeated-headers-and-ruby-web-servers].
   # If you are behind multiple proxy servers (like NGINX to HAProxy to Unicorn)
   # then you should test your Rack server to make sure your data is good.
   #
@@ -20,18 +20,19 @@ module ActionDispatch
   # This middleware assumes that there is at least one proxy sitting around
   # and setting headers with the client's remote IP address. If you don't use
   # a proxy, because you are hosted on e.g. Heroku without SSL, any client can
-  # claim to have any IP address by setting the X-Forwarded-For header. If you
+  # claim to have any IP address by setting the +X-Forwarded-For+ header. If you
   # care about that, then you need to explicitly drop or ignore those headers
-  # sometime before this middleware runs.
+  # sometime before this middleware runs. Alternatively, remove this middleware
+  # to avoid inadvertently relying on it.
   class RemoteIp
     class IpSpoofAttackError < StandardError; end
 
     # The default trusted IPs list simply includes IP addresses that are
     # guaranteed by the IP specification to be private addresses. Those will
     # not be the ultimate client IP in production, and so are discarded. See
-    # http://en.wikipedia.org/wiki/Private_network for details.
+    # https://en.wikipedia.org/wiki/Private_network for details.
     TRUSTED_PROXIES = [
-      "127.0.0.1",      # localhost IPv4
+      "127.0.0.0/8",    # localhost IPv4 range, per RFC-3330
       "::1",            # localhost IPv6
       "fc00::/7",       # private IPv6 range fc00::/7
       "10.0.0.0/8",     # private IPv4 range 10.x.x.x
@@ -49,11 +50,9 @@ module ActionDispatch
     # clients (like WAP devices), or behind proxies that set headers in an
     # incorrect or confusing way (like AWS ELB).
     #
-    # The +custom_proxies+ argument can take an Array of string, IPAddr, or
-    # Regexp objects which will be used instead of +TRUSTED_PROXIES+. If a
-    # single string, IPAddr, or Regexp object is provided, it will be used in
-    # addition to +TRUSTED_PROXIES+. Any proxy setup will put the value you
-    # want in the middle (or at the beginning) of the X-Forwarded-For list,
+    # The +custom_proxies+ argument can take an enumerable which will be used
+    # instead of +TRUSTED_PROXIES+. Any proxy setup will put the value you
+    # want in the middle (or at the beginning) of the +X-Forwarded-For+ list,
     # with your proxy servers after it. If your proxies aren't removed, pass
     # them in via the +custom_proxies+ parameter. That way, the middleware will
     # ignore those IP addresses, and return the one that you want.
@@ -65,6 +64,20 @@ module ActionDispatch
       elsif custom_proxies.respond_to?(:any?)
         custom_proxies
       else
+        ActionDispatch.deprecator.warn(<<~EOM)
+          Setting config.action_dispatch.trusted_proxies to a single value has
+          been deprecated. Please set this to an enumerable instead. For
+          example, instead of:
+
+          config.action_dispatch.trusted_proxies = IPAddr.new("10.0.0.0/8")
+
+          Wrap the value in an Array:
+
+          config.action_dispatch.trusted_proxies = [IPAddr.new("10.0.0.0/8")]
+
+          Note that unlike passing a single argument, passing an enumerable
+          will *replace* the default set of trusted proxies.
+        EOM
         Array(custom_proxies) + TRUSTED_PROXIES
       end
     end
@@ -96,11 +109,11 @@ module ActionDispatch
       # REMOTE_ADDR will be correct if the request is made directly against the
       # Ruby process, on e.g. Heroku. When the request is proxied by another
       # server like HAProxy or NGINX, the IP address that made the original
-      # request will be put in an X-Forwarded-For header. If there are multiple
+      # request will be put in an +X-Forwarded-For+ header. If there are multiple
       # proxies, that header may contain a list of IPs. Other proxy services
-      # set the Client-Ip header instead, so we check that too.
+      # set the +Client-Ip+ header instead, so we check that too.
       #
-      # As discussed in {this post about Rails IP Spoofing}[http://blog.gingerlime.com/2012/rails-ip-spoofing-vulnerabilities-and-protection/],
+      # As discussed in {this post about Rails IP Spoofing}[https://web.archive.org/web/20170626095448/https://blog.gingerlime.com/2012/rails-ip-spoofing-vulnerabilities-and-protection/],
       # while the first IP in the list is likely to be the "originating" IP,
       # it could also have been set by the client maliciously.
       #
@@ -112,8 +125,8 @@ module ActionDispatch
         remote_addr = ips_from(@req.remote_addr).last
 
         # Could be a CSV list and/or repeated headers that were concatenated.
-        client_ips    = ips_from(@req.client_ip).reverse
-        forwarded_ips = ips_from(@req.x_forwarded_for).reverse
+        client_ips    = ips_from(@req.client_ip).reverse!
+        forwarded_ips = ips_from(@req.x_forwarded_for).reverse!
 
         # +Client-Ip+ and +X-Forwarded-For+ should not, generally, both be set.
         # If they are both set, it means that either:
@@ -131,8 +144,8 @@ module ActionDispatch
         should_check_ip = @check_ip && client_ips.last && forwarded_ips.last
         if should_check_ip && !forwarded_ips.include?(client_ips.last)
           # We don't know which came from the proxy, and which from the user
-          raise IpSpoofAttackError, "IP spoofing attack?! " +
-            "HTTP_CLIENT_IP=#{@req.client_ip.inspect} " +
+          raise IpSpoofAttackError, "IP spoofing attack?! " \
+            "HTTP_CLIENT_IP=#{@req.client_ip.inspect} " \
             "HTTP_X_FORWARDED_FOR=#{@req.x_forwarded_for.inspect}"
         end
 
@@ -141,10 +154,12 @@ module ActionDispatch
         #   - X-Forwarded-For will be a list of IPs, one per proxy, or blank
         #   - Client-Ip is propagated from the outermost proxy, or is blank
         #   - REMOTE_ADDR will be the IP that made the request to Rack
-        ips = [forwarded_ips, client_ips, remote_addr].flatten.compact
+        ips = forwarded_ips + client_ips
+        ips.compact!
 
-        # If every single IP option is in the trusted list, just return REMOTE_ADDR
-        filter_proxies(ips).first || remote_addr
+        # If every single IP option is in the trusted list, return the IP
+        # that's furthest away
+        filter_proxies(ips + [remote_addr]).first || ips.last || remote_addr
       end
 
       # Memoizes the value returned by #calculate_ip and returns it for
@@ -153,31 +168,27 @@ module ActionDispatch
         @ip ||= calculate_ip
       end
 
-    protected
-
-      def ips_from(header)
+    private
+      def ips_from(header) # :doc:
         return [] unless header
-        # Split the comma-separated list into an array of strings
+        # Split the comma-separated list into an array of strings.
         ips = header.strip.split(/[,\s]+/)
-        ips.select do |ip|
-          begin
-            # Only return IPs that are valid according to the IPAddr#new method
-            range = IPAddr.new(ip).to_range
-            # we want to make sure nobody is sneaking a netmask in
-            range.begin == range.end
-          rescue ArgumentError
-            nil
-          end
+        ips.select! do |ip|
+          # Only return IPs that are valid according to the IPAddr#new method.
+          range = IPAddr.new(ip).to_range
+          # We want to make sure nobody is sneaking a netmask in.
+          range.begin == range.end
+        rescue ArgumentError
+          nil
         end
+        ips
       end
 
-      def filter_proxies(ips)
+      def filter_proxies(ips) # :doc:
         ips.reject do |ip|
           @proxies.any? { |proxy| proxy === ip }
         end
       end
-
     end
-
   end
 end

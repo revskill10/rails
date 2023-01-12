@@ -1,11 +1,31 @@
+# frozen_string_literal: true
+
 module ActiveRecord
-  # = Active Record Through Association
   module Associations
-    module ThroughAssociation #:nodoc:
+    # = Active Record Through Association
+    module ThroughAssociation # :nodoc:
+      delegate :source_reflection, to: :reflection
 
-      delegate :source_reflection, :through_reflection, :to => :reflection
+      private
+        def transaction(&block)
+          through_reflection.klass.transaction(&block)
+        end
 
-      protected
+        def through_reflection
+          @through_reflection ||= begin
+            refl = reflection.through_reflection
+
+            while refl.through_reflection?
+              refl = refl.through_reflection
+            end
+
+            refl
+          end
+        end
+
+        def through_association
+          @through_association ||= owner.association(through_reflection.name)
+        end
 
         # We merge in these scopes for two reasons:
         #
@@ -14,15 +34,13 @@ module ActiveRecord
         def target_scope
           scope = super
           reflection.chain.drop(1).each do |reflection|
-            relation = reflection.klass.all
+            relation = reflection.klass.scope_for_association
             scope.merge!(
-              relation.except(:select, :create_with, :includes, :preload, :joins, :eager_load)
+              relation.except(:select, :create_with, :includes, :preload, :eager_load, :joins, :left_outer_joins)
             )
           end
           scope
         end
-
-      private
 
         # Construct attributes for :through pointing to owner and associate. This is used by the
         # methods which create and delete records on the association.
@@ -39,31 +57,29 @@ module ActiveRecord
         def construct_join_attributes(*records)
           ensure_mutable
 
-          if source_reflection.association_primary_key(reflection.klass) == reflection.klass.primary_key
+          association_primary_key = source_reflection.association_primary_key(reflection.klass)
+
+          if association_primary_key == reflection.klass.primary_key && !options[:source_type]
             join_attributes = { source_reflection.name => records }
           else
             join_attributes = {
-              source_reflection.foreign_key =>
-                records.map { |record|
-                  record.send(source_reflection.association_primary_key(reflection.klass))
-                }
+              source_reflection.foreign_key => records.map(&association_primary_key.to_sym)
             }
           end
 
           if options[:source_type]
-            join_attributes[source_reflection.foreign_type] =
-              records.map { |record| record.class.base_class.name }
+            join_attributes[source_reflection.foreign_type] = [ options[:source_type] ]
           end
 
           if records.count == 1
-            Hash[join_attributes.map { |k, v| [k, v.first] }]
+            join_attributes.transform_values!(&:first)
           else
             join_attributes
           end
         end
 
-        # Note: this does not capture all cases, for example it would be crazy to try to
-        # properly support stale-checking for nested associations.
+        # Note: this does not capture all cases, for example it would be impractical
+        # to try to properly support stale-checking for nested associations.
         def stale_state
           if through_reflection.belongs_to?
             owner[through_reflection.foreign_key] && owner[through_reflection.foreign_key].to_s
@@ -102,7 +118,7 @@ module ActiveRecord
             attributes[inverse.foreign_key] = target.id
           end
 
-          super(attributes)
+          super
         end
     end
   end

@@ -1,27 +1,18 @@
-require 'yaml'
-require 'active_support/benchmarkable'
-require 'active_support/dependencies'
-require 'active_support/descendants_tracker'
-require 'active_support/time'
-require 'active_support/core_ext/module/attribute_accessors'
-require 'active_support/core_ext/array/extract_options'
-require 'active_support/core_ext/hash/deep_merge'
-require 'active_support/core_ext/hash/slice'
-require 'active_support/core_ext/hash/transform_values'
-require 'active_support/core_ext/string/behavior'
-require 'active_support/core_ext/kernel/singleton_class'
-require 'active_support/core_ext/module/introspection'
-require 'active_support/core_ext/object/duplicable'
-require 'active_support/core_ext/class/subclasses'
-require 'active_record/attribute_decorators'
-require 'active_record/errors'
-require 'active_record/log_subscriber'
-require 'active_record/explain_subscriber'
-require 'active_record/relation/delegation'
-require 'active_record/attributes'
-require 'active_record/type_caster'
+# frozen_string_literal: true
 
-module ActiveRecord #:nodoc:
+require "active_support/benchmarkable"
+require "active_support/dependencies"
+require "active_support/descendants_tracker"
+require "active_support/time"
+require "active_support/core_ext/class/subclasses"
+require "active_record/log_subscriber"
+require "active_record/explain_subscriber"
+require "active_record/relation/delegation"
+require "active_record/attributes"
+require "active_record/type_caster"
+require "active_record/database_configurations"
+
+module ActiveRecord # :nodoc:
   # = Active Record
   #
   # Active Record objects don't specify their attributes directly, but rather infer them from
@@ -145,6 +136,23 @@ module ActiveRecord #:nodoc:
   #
   #   anonymous = User.new(name: "")
   #   anonymous.name? # => false
+  #
+  # Query methods will also respect any overrides of default accessors:
+  #
+  #   class User
+  #     # Has admin boolean column
+  #     def admin
+  #       false
+  #     end
+  #   end
+  #
+  #   user.update(admin: true)
+  #
+  #   user.read_attribute(:admin)  # => true, gets the column value
+  #   user[:admin] # => true, also gets the column value
+  #
+  #   user.admin   # => false, due to the getter override
+  #   user.admin?  # => false, due to the getter override
   #
   # == Accessing attributes before they have been typecasted
   #
@@ -282,10 +290,11 @@ module ActiveRecord #:nodoc:
     extend Querying
     extend Translation
     extend DynamicMatchers
+    extend DelegatedType
     extend Explain
     extend Enum
     extend Delegation::DelegateCache
-    extend CollectionCacheKey
+    extend Aggregations::ClassMethods
 
     include Core
     include Persistence
@@ -300,25 +309,27 @@ module ActiveRecord #:nodoc:
     include Validations
     include CounterCache
     include Attributes
-    include AttributeDecorators
     include Locking::Optimistic
     include Locking::Pessimistic
+    include Encryption::EncryptableRecord
     include AttributeMethods
     include Callbacks
     include Timestamp
     include Associations
-    include ActiveModel::SecurePassword
+    include SecurePassword
     include AutosaveAssociation
     include NestedAttributes
-    include Aggregations
     include Transactions
-    include NoTouching
     include TouchLater
+    include NoTouching
     include Reflection
     include Serialization
     include Store
     include SecureToken
+    include TokenFor
+    include SignedId
     include Suppressor
+    include Normalization
   end
 
   ActiveSupport.run_load_hooks(:active_record, Base)

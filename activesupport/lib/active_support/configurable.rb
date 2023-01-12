@@ -1,10 +1,11 @@
-require 'active_support/concern'
-require 'active_support/ordered_options'
-require 'active_support/core_ext/array/extract_options'
+# frozen_string_literal: true
+
+require "active_support/concern"
+require "active_support/ordered_options"
 
 module ActiveSupport
   # Configurable provides a <tt>config</tt> method to store and retrieve
-  # configuration options as an <tt>OrderedHash</tt>.
+  # configuration options as an OrderedOptions.
   module Configurable
     extend ActiveSupport::Concern
 
@@ -66,8 +67,8 @@ module ActiveSupport
       #   end
       #   # => NameError: invalid config attribute name
       #
-      # To opt out of the instance writer method, pass <tt>instance_writer: false</tt>.
-      # To opt out of the instance reader method, pass <tt>instance_reader: false</tt>.
+      # To omit the instance writer method, pass <tt>instance_writer: false</tt>.
+      # To omit the instance reader method, pass <tt>instance_reader: false</tt>.
       #
       #   class User
       #     include ActiveSupport::Configurable
@@ -80,7 +81,7 @@ module ActiveSupport
       #   User.new.allowed_access = true # => NoMethodError
       #   User.new.allowed_access        # => NoMethodError
       #
-      # Or pass <tt>instance_accessor: false</tt>, to opt out both instance methods.
+      # Or pass <tt>instance_accessor: false</tt>, to omit both instance methods.
       #
       #   class User
       #     include ActiveSupport::Configurable
@@ -93,21 +94,21 @@ module ActiveSupport
       #   User.new.allowed_access = true # => NoMethodError
       #   User.new.allowed_access        # => NoMethodError
       #
-      # Also you can pass a block to set up the attribute with a default value.
+      # Also you can pass <tt>default</tt> or a block to set up the attribute with a default value.
       #
       #   class User
       #     include ActiveSupport::Configurable
+      #     config_accessor :allowed_access, default: false
       #     config_accessor :hair_colors do
       #       [:brown, :black, :blonde, :red]
       #     end
       #   end
       #
+      #   User.allowed_access # => false
       #   User.hair_colors # => [:brown, :black, :blonde, :red]
-      def config_accessor(*names)
-        options = names.extract_options!
-
+      def config_accessor(*names, instance_reader: true, instance_writer: true, instance_accessor: true, default: nil) # :doc:
         names.each do |name|
-          raise NameError.new('invalid config attribute name') unless name =~ /\A[_A-Za-z]\w*\z/
+          raise NameError.new("invalid config attribute name") unless /\A[_A-Za-z]\w*\z/.match?(name)
 
           reader, reader_line = "def #{name}; config.#{name}; end", __LINE__
           writer, writer_line = "def #{name}=(value); config.#{name} = value; end", __LINE__
@@ -115,19 +116,20 @@ module ActiveSupport
           singleton_class.class_eval reader, __FILE__, reader_line
           singleton_class.class_eval writer, __FILE__, writer_line
 
-          unless options[:instance_accessor] == false
-            class_eval reader, __FILE__, reader_line unless options[:instance_reader] == false
-            class_eval writer, __FILE__, writer_line unless options[:instance_writer] == false
+          if instance_accessor
+            class_eval reader, __FILE__, reader_line if instance_reader
+            class_eval writer, __FILE__, writer_line if instance_writer
           end
-          send("#{name}=", yield) if block_given?
+
+          send("#{name}=", block_given? ? yield : default)
         end
       end
       private :config_accessor
     end
 
-    # Reads and writes attributes from a configuration <tt>OrderedHash</tt>.
+    # Reads and writes attributes from a configuration OrderedOptions.
     #
-    #   require 'active_support/configurable'
+    #   require "active_support/configurable"
     #
     #   class User
     #     include ActiveSupport::Configurable
@@ -145,4 +147,3 @@ module ActiveSupport
     end
   end
 end
-

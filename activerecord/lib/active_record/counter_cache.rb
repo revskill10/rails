@@ -1,7 +1,13 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   # = Active Record Counter Cache
   module CounterCache
     extend ActiveSupport::Concern
+
+    included do
+      class_attribute :_counter_cache_columns, instance_accessor: false, default: []
+    end
 
     module ClassMethods
       # Resets one or more counter caches to their correct value using an SQL
@@ -12,13 +18,22 @@ module ActiveRecord
       #
       # * +id+ - The id of the object you wish to reset a counter on.
       # * +counters+ - One or more association counters to reset. Association name or counter name can be given.
+      # * <tt>:touch</tt> - Touch timestamp columns when updating.
+      #   Pass +true+ to touch +updated_at+ and/or +updated_on+. Pass a symbol to
+      #   touch that column or an array of symbols to touch just those ones.
       #
       # ==== Examples
       #
-      #   # For Post with id #1 records reset the comments_count
+      #   # For the Post with id #1, reset the comments_count
       #   Post.reset_counters(1, :comments)
-      def reset_counters(id, *counters)
+      #
+      #   # Like above, but also touch the +updated_at+ and/or +updated_on+
+      #   # attributes.
+      #   Post.reset_counters(1, :comments, touch: true)
+      def reset_counters(id, *counters, touch: nil)
         object = find(id)
+
+        updates = {}
         counters.each do |counter_association|
           has_many_association = _reflect_on_association(counter_association)
           unless has_many_association
@@ -26,7 +41,7 @@ module ActiveRecord
             has_many_association = has_many.find { |association| association.counter_cache_column && association.counter_cache_column.to_sym == counter_association.to_sym }
             counter_association = has_many_association.plural_name if has_many_association
           end
-          raise ArgumentError, "'#{self.name}' has no association called '#{counter_association}'" unless has_many_association
+          raise ArgumentError, "'#{name}' has no association called '#{counter_association}'" unless has_many_association
 
           if has_many_association.is_a? ActiveRecord::Reflection::ThroughReflection
             has_many_association = has_many_association.through_reflection
@@ -37,11 +52,22 @@ module ActiveRecord
           reflection   = child_class._reflections.values.find { |e| e.belongs_to? && e.foreign_key.to_s == foreign_key && e.options[:counter_cache].present? }
           counter_name = reflection.counter_cache_column
 
-          unscoped.where(primary_key => object.id).update_all(
-            counter_name => object.send(counter_association).count(:all)
-          )
+          count_was = object.send(counter_name)
+          count = object.send(counter_association).count(:all)
+          updates[counter_name] = count if count != count_was
         end
-        return true
+
+        if touch
+          names = touch if touch != true
+          names = Array.wrap(names)
+          options = names.extract_options!
+          touch_updates = touch_attributes_with_time(*names, **options)
+          updates.merge!(touch_updates)
+        end
+
+        unscoped.where(primary_key => object.id).update_all(updates) if updates.any?
+
+        true
       end
 
       # A generic "counter updater" implementation, intended primarily to be
@@ -55,6 +81,9 @@ module ActiveRecord
       # * +id+ - The id of the object you wish to update a counter on or an array of ids.
       # * +counters+ - A Hash containing the names of the fields
       #   to update as keys and the amount to update the field by as values.
+      # * <tt>:touch</tt> option - Touch timestamp columns when updating.
+      #   If attribute names are passed, they are updated along with updated_at/on
+      #   attributes.
       #
       # ==== Examples
       #
@@ -73,14 +102,17 @@ module ActiveRecord
       #   # UPDATE posts
       #   #    SET comment_count = COALESCE(comment_count, 0) + 1
       #   #  WHERE id IN (10, 15)
+      #
+      #   # For the Posts with id of 10 and 15, increment the comment_count by 1
+      #   # and update the updated_at value for each counter.
+      #   Post.update_counters [10, 15], comment_count: 1, touch: true
+      #   # Executes the following SQL:
+      #   # UPDATE posts
+      #   #    SET comment_count = COALESCE(comment_count, 0) + 1,
+      #   #    `updated_at` = '2016-10-13T09:59:23-05:00'
+      #   #  WHERE id IN (10, 15)
       def update_counters(id, counters)
-        updates = counters.map do |counter_name, value|
-          operator = value < 0 ? '-' : '+'
-          quoted_column = connection.quote_column_name(counter_name)
-          "#{quoted_column} = COALESCE(#{quoted_column}, 0) #{operator} #{value.abs}"
-        end
-
-        unscoped.where(primary_key => id).update_all updates.join(', ')
+        unscoped.where!(primary_key => id).update_counters(counters)
       end
 
       # Increment a numeric field by one, via a direct SQL update.
@@ -94,13 +126,20 @@ module ActiveRecord
       #
       # * +counter_name+ - The name of the field that should be incremented.
       # * +id+ - The id of the object that should be incremented or an array of ids.
+      # * <tt>:touch</tt> - Touch timestamp columns when updating.
+      #   Pass +true+ to touch +updated_at+ and/or +updated_on+. Pass a symbol to
+      #   touch that column or an array of symbols to touch just those ones.
       #
       # ==== Examples
       #
       #   # Increment the posts_count column for the record with an id of 5
       #   DiscussionBoard.increment_counter(:posts_count, 5)
-      def increment_counter(counter_name, id)
-        update_counters(id, counter_name => 1)
+      #
+      #   # Increment the posts_count column for the record with an id of 5
+      #   # and update the updated_at value.
+      #   DiscussionBoard.increment_counter(:posts_count, 5, touch: true)
+      def increment_counter(counter_name, id, touch: nil)
+        update_counters(id, counter_name => 1, touch: touch)
       end
 
       # Decrement a numeric field by one, via a direct SQL update.
@@ -112,26 +151,33 @@ module ActiveRecord
       #
       # * +counter_name+ - The name of the field that should be decremented.
       # * +id+ - The id of the object that should be decremented or an array of ids.
+      # * <tt>:touch</tt> - Touch timestamp columns when updating.
+      #   Pass +true+ to touch +updated_at+ and/or +updated_on+. Pass a symbol to
+      #   touch that column or an array of symbols to touch just those ones.
       #
       # ==== Examples
       #
       #   # Decrement the posts_count column for the record with an id of 5
       #   DiscussionBoard.decrement_counter(:posts_count, 5)
-      def decrement_counter(counter_name, id)
-        update_counters(id, counter_name => -1)
+      #
+      #   # Decrement the posts_count column for the record with an id of 5
+      #   # and update the updated_at value.
+      #   DiscussionBoard.decrement_counter(:posts_count, 5, touch: true)
+      def decrement_counter(counter_name, id, touch: nil)
+        update_counters(id, counter_name => -1, touch: touch)
+      end
+
+      def counter_cache_column?(name) # :nodoc:
+        _counter_cache_columns.include?(name)
       end
     end
 
     private
-
-      def _create_record(*)
+      def _create_record(attribute_names = self.attribute_names)
         id = super
 
         each_counter_cached_associations do |association|
-          if send(association.reflection.name)
-            association.increment_counters
-            @_after_create_counter_called = true
-          end
+          association.increment_counters
         end
 
         id
@@ -144,9 +190,7 @@ module ActiveRecord
           each_counter_cached_associations do |association|
             foreign_key = association.reflection.foreign_key.to_sym
             unless destroyed_by_association && destroyed_by_association.foreign_key.to_sym == foreign_key
-              if send(association.reflection.name)
-                association.decrement_counters
-              end
+              association.decrement_counters
             end
           end
         end
@@ -159,6 +203,5 @@ module ActiveRecord
           yield association(name.to_sym) if reflection.belongs_to? && reflection.counter_cache_column
         end
       end
-
   end
 end

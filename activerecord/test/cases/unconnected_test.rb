@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cases/helper"
 
 class TestRecord < ActiveRecord::Base
@@ -8,12 +10,15 @@ class TestUnconnectedAdapter < ActiveRecord::TestCase
 
   def setup
     @underlying = ActiveRecord::Base.connection
-    @specification = ActiveRecord::Base.remove_connection
+    @connection_name = ActiveRecord::Base.remove_connection
+
+    # Clear out connection info from other pids (like a fork parent) too
+    ActiveRecord::ConnectionAdapters::PoolConfig.discard_pools!
   end
 
   teardown do
     @underlying = nil
-    ActiveRecord::Base.establish_connection(@specification)
+    ActiveRecord::Base.establish_connection(@connection_name)
     load_schema if in_memory_db?
   end
 
@@ -27,7 +32,15 @@ class TestUnconnectedAdapter < ActiveRecord::TestCase
     end
   end
 
+  def test_error_message_when_connection_not_established
+    error = assert_raise(ActiveRecord::ConnectionNotEstablished) do
+      TestRecord.find(1)
+    end
+
+    assert_equal "No connection pool for 'ActiveRecord::Base' found.", error.message
+  end
+
   def test_underlying_adapter_no_longer_active
-    assert !@underlying.active?, "Removed adapter should no longer be active"
+    assert_not @underlying.active?, "Removed adapter should no longer be active"
   end
 end

@@ -1,17 +1,13 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module Associations
-    class SingularAssociation < Association #:nodoc:
+    class SingularAssociation < Association # :nodoc:
       # Implements the reader method, e.g. foo.bar for Foo.has_one :bar
-      def reader(force_reload = false)
-        if force_reload && klass
-          ActiveSupport::Deprecation.warn(<<-MSG.squish)
-            Passing an argument to force an association to reload is now
-            deprecated and will be removed in Rails 5.1. Please call `reload`
-            on the parent object instead.
-          MSG
+      def reader
+        ensure_klass_exists!
 
-          klass.uncached { reload }
-        elsif !loaded? || stale_target?
+        if !loaded? || stale_target?
           reload
         end
 
@@ -23,45 +19,29 @@ module ActiveRecord
         replace(record)
       end
 
-      def create(attributes = {}, &block)
-        _create_record(attributes, &block)
-      end
-
-      def create!(attributes = {}, &block)
-        _create_record(attributes, true, &block)
-      end
-
-      def build(attributes = {})
-        record = build_record(attributes)
-        yield(record) if block_given?
+      def build(attributes = nil, &block)
+        record = build_record(attributes, &block)
         set_new_record(record)
         record
       end
 
+      # Implements the reload reader method, e.g. foo.reload_bar for
+      # Foo.has_one :bar
+      def force_reload_reader
+        reload(true)
+        target
+      end
+
       private
-
-        def create_scope
-          scope.scope_for_create.stringify_keys.except(klass.primary_key)
-        end
-
-        def get_records
-          return scope.limit(1).records if skip_statement_cache?
-
-          conn = klass.connection
-          sc = reflection.association_scope_cache(conn, owner) do
-            StatementCache.create(conn) { |params|
-              as = AssociationScope.create { params.bind }
-              target_scope.merge(as.scope(self, conn)).limit(1)
-            }
-          end
-
-          binds = AssociationScope.get_bind_values(owner, reflection.chain)
-          sc.execute binds, klass, klass.connection
+        def scope_for_create
+          super.except!(klass.primary_key)
         end
 
         def find_target
-          if record = get_records.first
-            set_inverse_instance record
+          if disable_joins
+            scope.first
+          else
+            super.first
           end
         end
 
@@ -73,13 +53,14 @@ module ActiveRecord
           replace(record)
         end
 
-        def _create_record(attributes, raise_error = false)
-          record = build_record(attributes)
-          yield(record) if block_given?
-          saved = record.save
-          set_new_record(record)
-          raise RecordInvalid.new(record) if !saved && raise_error
-          record
+        def _create_record(attributes, raise_error = false, &block)
+          reflection.klass.transaction do
+            record = build(attributes, &block)
+            saved = record.save
+            replace_keys(record, force: true)
+            raise RecordInvalid.new(record) if !saved && raise_error
+            record
+          end
         end
     end
   end

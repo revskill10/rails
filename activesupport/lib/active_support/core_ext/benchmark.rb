@@ -1,4 +1,6 @@
-require 'benchmark'
+# frozen_string_literal: true
+
+require "benchmark"
 
 class << Benchmark
   # Benchmark realtime in milliseconds.
@@ -8,7 +10,7 @@ class << Benchmark
   #
   #   Benchmark.ms { User.all }
   #   # => 0.074
-  def ms
-    1000 * realtime { yield }
+  def ms(&block)
+    1000 * realtime(&block)
   end
 end

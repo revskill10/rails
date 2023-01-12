@@ -1,4 +1,7 @@
-require 'isolation/abstract_unit'
+# frozen_string_literal: true
+
+require "isolation/abstract_unit"
+require "console_helpers"
 
 class ConsoleTest < ActiveSupport::TestCase
   include ActiveSupport::Testing::Isolation
@@ -22,14 +25,14 @@ class ConsoleTest < ActiveSupport::TestCase
   end
 
   def test_app_method_should_return_integration_session
-    TestHelpers::Rack.send :remove_method, :app
+    TestHelpers::Rack.remove_method :app
     load_environment
     console_session = irb_context.app
     assert_instance_of ActionDispatch::Integration::Session, console_session
   end
 
   def test_app_can_access_path_helper_method
-    app_file 'config/routes.rb', <<-RUBY
+    app_file "config/routes.rb", <<-RUBY
       Rails.application.routes.draw do
         get 'foo', to: 'foo#index'
       end
@@ -37,7 +40,7 @@ class ConsoleTest < ActiveSupport::TestCase
 
     load_environment
     console_session = irb_context.app
-    assert_equal '/foo', console_session.foo_path
+    assert_equal "/foo", console_session.foo_path
   end
 
   def test_new_session_should_return_integration_session
@@ -70,7 +73,7 @@ class ConsoleTest < ActiveSupport::TestCase
     MODEL
 
     load_environment
-    assert User.new.respond_to?(:name)
+    assert_respond_to User.new, :name
 
     app_file "app/models/user.rb", <<-MODEL
       class User
@@ -78,9 +81,9 @@ class ConsoleTest < ActiveSupport::TestCase
       end
     MODEL
 
-    assert !User.new.respond_to?(:age)
+    assert_not_respond_to User.new, :age
     irb_context.reload!(false)
-    assert User.new.respond_to?(:age)
+    assert_respond_to User.new, :age
   end
 
   def test_access_to_helpers
@@ -88,76 +91,85 @@ class ConsoleTest < ActiveSupport::TestCase
     helper = irb_context.helper
     assert_not_nil helper
     assert_instance_of ActionView::Base, helper
-    assert_equal 'Once upon a time in a world...',
-      helper.truncate('Once upon a time in a world far far away')
+    assert_equal "Once upon a time in a world...",
+      helper.truncate("Once upon a time in a world far far away")
   end
 end
 
-begin
-  require "pty"
-rescue LoadError
-end
-
 class FullStackConsoleTest < ActiveSupport::TestCase
+  include ConsoleHelpers
+
   def setup
-    skip "PTY unavailable" unless defined?(PTY) && PTY.respond_to?(:open)
+    skip "PTY unavailable" unless available_pty?
 
     build_app
-    app_file 'app/models/post.rb', <<-CODE
+    app_file "app/models/post.rb", <<-CODE
       class Post < ActiveRecord::Base
       end
     CODE
     system "#{app_path}/bin/rails runner 'Post.connection.create_table :posts'"
 
-    @master, @slave = PTY.open
+    @primary, @replica = PTY.open
   end
 
   def teardown
     teardown_app
   end
 
-  def assert_output(expected, timeout = 1)
-    timeout = Time.now + timeout
-
-    output = ""
-    until output.include?(expected) || Time.now > timeout
-      if IO.select([@master], [], [], 0.1)
-        output << @master.read(1)
-      end
-    end
-
-    assert output.include?(expected), "#{expected.inspect} expected, but got:\n\n#{output}"
-  end
-
   def write_prompt(command, expected_output = nil)
-    @master.puts command
-    assert_output command
-    assert_output expected_output if expected_output
-    assert_output "> "
+    @primary.puts command
+    assert_output command, @primary
+    assert_output expected_output, @primary if expected_output
+    assert_output "> ", @primary
   end
 
-  def spawn_console
-    Process.spawn(
-      "#{app_path}/bin/rails console --sandbox",
-      in: @slave, out: @slave, err: @slave
+  def spawn_console(options, wait_for_prompt: true)
+    pid = Process.spawn(
+      "#{app_path}/bin/rails console #{options}",
+      in: @replica, out: @replica, err: @replica
     )
 
-    assert_output "> ", 30
+    if wait_for_prompt
+      assert_output "> ", @primary, 30
+    end
+
+    pid
   end
 
   def test_sandbox
-    spawn_console
+    options = "--sandbox -- --singleline --nocolorize"
+    spawn_console(options)
 
     write_prompt "Post.count", "=> 0"
     write_prompt "Post.create"
     write_prompt "Post.count", "=> 1"
-    @master.puts "quit"
+    @primary.puts "quit"
 
-    spawn_console
+    spawn_console(options)
 
     write_prompt "Post.count", "=> 0"
     write_prompt "Post.transaction { Post.create; raise }"
     write_prompt "Post.count", "=> 0"
-    @master.puts "quit"
+    @primary.puts "quit"
+  end
+
+  def test_sandbox_when_sandbox_is_disabled
+    add_to_config <<-RUBY
+      config.disable_sandbox = true
+    RUBY
+
+    output = `#{app_path}/bin/rails console --sandbox`
+
+    assert_includes output, "sandbox mode is disabled"
+    assert_equal 1, $?.exitstatus
+  end
+
+  def test_environment_option_and_irb_option
+    options = "-e test -- --verbose --singleline --nocolorize"
+    spawn_console(options)
+
+    write_prompt "a = 1", "a = 1"
+    write_prompt "puts Rails.env", "puts Rails.env\r\ntest"
+    @primary.puts "quit"
   end
 end

@@ -1,24 +1,42 @@
-require 'stringio'
+# frozen_string_literal: true
+
+require "stringio"
 
 module ActiveRecord
   # = Active Record Schema Dumper
   #
   # This class is used to dump the database schema for some connection to some
   # output format (i.e., ActiveRecord::Schema).
-  class SchemaDumper #:nodoc:
+  class SchemaDumper # :nodoc:
     private_class_method :new
 
     ##
     # :singleton-method:
     # A list of tables which should not be dumped to the schema.
-    # Acceptable values are strings as well as regexp.
-    # This setting is only used if ActiveRecord::Base.schema_format == :ruby
-    cattr_accessor :ignore_tables
-    @@ignore_tables = []
+    # Acceptable values are strings and regexps.
+    cattr_accessor :ignore_tables, default: []
+
+    ##
+    # :singleton-method:
+    # Specify a custom regular expression matching foreign keys which name
+    # should not be dumped to db/schema.rb.
+    cattr_accessor :fk_ignore_pattern, default: /^fk_rails_[0-9a-f]{10}$/
+
+    ##
+    # :singleton-method:
+    # Specify a custom regular expression matching check constraints which name
+    # should not be dumped to db/schema.rb.
+    cattr_accessor :chk_ignore_pattern, default: /^chk_rails_[0-9a-f]{10}$/
+
+    ##
+    # :singleton-method:
+    # Specify a custom regular expression matching exclusion constraints which name
+    # should not be dumped to db/schema.rb.
+    cattr_accessor :excl_ignore_pattern, default: /^excl_rails_[0-9a-f]{10}$/
 
     class << self
-      def dump(connection=ActiveRecord::Base.connection, stream=STDOUT, config = ActiveRecord::Base)
-        new(connection, generate_options(config)).dump(stream)
+      def dump(connection = ActiveRecord::Base.connection, stream = STDOUT, config = ActiveRecord::Base)
+        connection.create_schema_dumper(generate_options(config)).dump(stream)
         stream
       end
 
@@ -34,65 +52,71 @@ module ActiveRecord
     def dump(stream)
       header(stream)
       extensions(stream)
+      types(stream)
       tables(stream)
       trailer(stream)
       stream
     end
 
     private
+      attr_accessor :table_name
 
       def initialize(connection, options = {})
         @connection = connection
-        @version = Migrator::current_version rescue nil
+        @version = connection.migration_context.current_version rescue nil
         @options = options
       end
 
+      # turns 20170404131909 into "2017_04_04_131909"
+      def formatted_version
+        stringified = @version.to_s
+        return stringified unless stringified.length == 14
+        stringified.insert(4, "_").insert(7, "_").insert(10, "_")
+      end
+
+      def define_params
+        @version ? "version: #{formatted_version}" : ""
+      end
+
       def header(stream)
-        define_params = @version ? "version: #{@version}" : ""
+        stream.puts <<~HEADER
+          # This file is auto-generated from the current state of the database. Instead
+          # of editing this file, please use the migrations feature of Active Record to
+          # incrementally modify your database, and then regenerate this schema definition.
+          #
+          # This file is the source Rails uses to define your schema when running `bin/rails
+          # db:schema:load`. When creating a new database, `bin/rails db:schema:load` tends to
+          # be faster and is potentially less error prone than running all of your
+          # migrations from scratch. Old migrations may fail to apply correctly if those
+          # migrations use external dependencies or application code.
+          #
+          # It's strongly recommended that you check this file into your version control system.
 
-        stream.puts <<HEADER
-# This file is auto-generated from the current state of the database. Instead
-# of editing this file, please use the migrations feature of Active Record to
-# incrementally modify your database, and then regenerate this schema definition.
-#
-# Note that this schema.rb definition is the authoritative source for your
-# database schema. If you need to create the application database on another
-# system, you should be using db:schema:load, not running all the migrations
-# from scratch. The latter is a flawed and unsustainable approach (the more migrations
-# you'll amass, the slower it'll run and the greater likelihood for issues).
-#
-# It's strongly recommended that you check this file into your version control system.
-
-ActiveRecord::Schema.define(#{define_params}) do
-
-HEADER
+          ActiveRecord::Schema[#{ActiveRecord::Migration.current_version}].define(#{define_params}) do
+        HEADER
       end
 
       def trailer(stream)
         stream.puts "end"
       end
 
+      # extensions are only supported by PostgreSQL
       def extensions(stream)
-        return unless @connection.supports_extensions?
-        extensions = @connection.extensions
-        if extensions.any?
-          stream.puts "  # These are extensions that must be enabled in order to support this database"
-          extensions.each do |extension|
-            stream.puts "  enable_extension #{extension.inspect}"
-          end
-          stream.puts
-        end
+      end
+
+      # (enum) types are only supported by PostgreSQL
+      def types(stream)
       end
 
       def tables(stream)
-        sorted_tables = @connection.data_sources.sort - @connection.views
+        sorted_tables = @connection.tables.sort
 
         sorted_tables.each do |table_name|
           table(table_name, stream) unless ignored?(table_name)
         end
 
         # dump foreign keys at the end to make sure all dependent tables exist.
-        if @connection.supports_foreign_keys?
+        if @connection.use_foreign_keys?
           sorted_tables.each do |tbl|
             foreign_keys(tbl, stream) unless ignored?(tbl)
           end
@@ -102,93 +126,69 @@ HEADER
       def table(table, stream)
         columns = @connection.columns(table)
         begin
+          self.table_name = table
+
           tbl = StringIO.new
 
           # first dump primary key column
-          if @connection.respond_to?(:primary_keys)
-            pk = @connection.primary_keys(table)
-            pk = pk.first unless pk.size > 1
-          else
-            pk = @connection.primary_key(table)
-          end
+          pk = @connection.primary_key(table)
 
           tbl.print "  create_table #{remove_prefix_and_suffix(table).inspect}"
 
           case pk
           when String
-            tbl.print ", primary_key: #{pk.inspect}" unless pk == 'id'
+            tbl.print ", primary_key: #{pk.inspect}" unless pk == "id"
             pkcol = columns.detect { |c| c.name == pk }
-            pkcolspec = @connection.column_spec_for_primary_key(pkcol)
-            if pkcolspec.present?
-              pkcolspec.each do |key, value|
-                tbl.print ", #{key}: #{value}"
+            pkcolspec = column_spec_for_primary_key(pkcol)
+            unless pkcolspec.empty?
+              if pkcolspec != pkcolspec.slice(:id, :default)
+                pkcolspec = { id: { type: pkcolspec.delete(:id), **pkcolspec }.compact }
               end
+              tbl.print ", #{format_colspec(pkcolspec)}"
             end
           when Array
             tbl.print ", primary_key: #{pk.inspect}"
           else
             tbl.print ", id: false"
           end
-          tbl.print ", force: :cascade"
 
           table_options = @connection.table_options(table)
-          tbl.print ", options: #{table_options.inspect}" unless table_options.blank?
-
-          if comment = @connection.table_comment(table).presence
-            tbl.print ", comment: #{comment.inspect}"
+          if table_options.present?
+            tbl.print ", #{format_options(table_options)}"
           end
 
-          tbl.puts " do |t|"
+          tbl.puts ", force: :cascade do |t|"
 
           # then dump all non-primary key columns
-          column_specs = columns.map do |column|
+          columns.each do |column|
             raise StandardError, "Unknown type '#{column.sql_type}' for column '#{column.name}'" unless @connection.valid_type?(column.type)
             next if column.name == pk
-            @connection.column_spec(column)
-          end.compact
 
-          # find all migration keys used in this table
-          keys = @connection.migration_keys
-
-          # figure out the lengths for each column based on above keys
-          lengths = keys.map { |key|
-            column_specs.map { |spec|
-              spec[key] ? spec[key].length + 2 : 0
-            }.max
-          }
-
-          # the string we're going to sprintf our values against, with standardized column widths
-          format_string = lengths.map{ |len| "%-#{len}s" }
-
-          # find the max length for the 'type' column, which is special
-          type_length = column_specs.map{ |column| column[:type].length }.max
-
-          # add column type definition to our format string
-          format_string.unshift "    t.%-#{type_length}s "
-
-          format_string *= ''
-
-          column_specs.each do |colspec|
-            values = keys.zip(lengths).map{ |key, len| colspec.key?(key) ? colspec[key] + ", " : " " * len }
-            values.unshift colspec[:type]
-            tbl.print((format_string % values).gsub(/,\s*$/, ''))
+            type, colspec = column_spec(column)
+            if type.is_a?(Symbol)
+              tbl.print "    t.#{type} #{column.name.inspect}"
+            else
+              tbl.print "    t.column #{column.name.inspect}, #{type.inspect}"
+            end
+            tbl.print ", #{format_colspec(colspec)}" if colspec.present?
             tbl.puts
           end
 
           indexes_in_create(table, tbl)
+          check_constraints_in_create(table, tbl) if @connection.supports_check_constraints?
+          exclusion_constraints_in_create(table, tbl) if @connection.supports_exclusion_constraints?
 
           tbl.puts "  end"
           tbl.puts
 
-          tbl.rewind
-          stream.print tbl.read
+          stream.print tbl.string
         rescue => e
           stream.puts "# Could not dump table #{table.inspect} because of following #{e.class}"
           stream.puts "#   #{e.message}"
           stream.puts
+        ensure
+          self.table_name = nil
         end
-
-        stream
       end
 
       # Keep it for indexing materialized views
@@ -196,7 +196,7 @@ HEADER
         if (indexes = @connection.indexes(table)).any?
           add_index_statements = indexes.map do |index|
             table_name = remove_prefix_and_suffix(index.table).inspect
-            "  add_index #{([table_name]+index_parts(index)).join(', ')}"
+            "  add_index #{([table_name] + index_parts(index)).join(', ')}"
           end
 
           stream.puts add_index_statements.sort.join("\n")
@@ -206,6 +206,12 @@ HEADER
 
       def indexes_in_create(table, stream)
         if (indexes = @connection.indexes(table)).any?
+          if @connection.supports_exclusion_constraints? && (exclusion_constraints = @connection.exclusion_constraints(table)).any?
+            exclusion_constraint_names = exclusion_constraints.collect(&:name)
+
+            indexes = indexes.reject { |index| exclusion_constraint_names.include?(index.name) }
+          end
+
           index_statements = indexes.map do |index|
             "    t.index #{index_parts(index).join(', ')}"
           end
@@ -218,18 +224,35 @@ HEADER
           index.columns.inspect,
           "name: #{index.name.inspect}",
         ]
-        index_parts << 'unique: true' if index.unique
-
-        index_lengths = (index.lengths || []).compact
-        index_parts << "length: #{Hash[index.columns.zip(index.lengths)].inspect}" if index_lengths.any?
-
-        index_orders = index.orders || {}
-        index_parts << "order: #{index.orders.inspect}" if index_orders.any?
+        index_parts << "unique: true" if index.unique
+        index_parts << "length: #{format_index_parts(index.lengths)}" if index.lengths.present?
+        index_parts << "order: #{format_index_parts(index.orders)}" if index.orders.present?
+        index_parts << "opclass: #{format_index_parts(index.opclasses)}" if index.opclasses.present?
         index_parts << "where: #{index.where.inspect}" if index.where
-        index_parts << "using: #{index.using.inspect}" if index.using
+        index_parts << "using: #{index.using.inspect}" if !@connection.default_index_type?(index)
         index_parts << "type: #{index.type.inspect}" if index.type
         index_parts << "comment: #{index.comment.inspect}" if index.comment
         index_parts
+      end
+
+      def check_constraints_in_create(table, stream)
+        if (check_constraints = @connection.check_constraints(table)).any?
+          add_check_constraint_statements = check_constraints.map do |check_constraint|
+            parts = [
+              "t.check_constraint #{check_constraint.expression.inspect}"
+            ]
+
+            if check_constraint.export_name_on_schema_dump?
+              parts << "name: #{check_constraint.name.inspect}"
+            end
+
+            parts << "validate: #{check_constraint.validate?.inspect}" unless check_constraint.validate?
+
+            "    #{parts.join(', ')}"
+          end
+
+          stream.puts add_check_constraint_statements.sort.join("\n")
+        end
       end
 
       def foreign_keys(table, stream)
@@ -248,12 +271,14 @@ HEADER
               parts << "primary_key: #{foreign_key.primary_key.inspect}"
             end
 
-            if foreign_key.name !~ /^fk_rails_[0-9a-f]{10}$/
+            if foreign_key.export_name_on_schema_dump?
               parts << "name: #{foreign_key.name.inspect}"
             end
 
             parts << "on_update: #{foreign_key.on_update.inspect}" if foreign_key.on_update
             parts << "on_delete: #{foreign_key.on_delete.inspect}" if foreign_key.on_delete
+            parts << "deferrable: #{foreign_key.deferrable.inspect}" if foreign_key.deferrable
+            parts << "validate: #{foreign_key.validate?.inspect}" unless foreign_key.validate?
 
             "  #{parts.join(', ')}"
           end
@@ -262,8 +287,28 @@ HEADER
         end
       end
 
+      def format_colspec(colspec)
+        colspec.map do |key, value|
+          "#{key}: #{ value.is_a?(Hash) ? "{ #{format_colspec(value)} }" : value }"
+        end.join(", ")
+      end
+
+      def format_options(options)
+        options.map { |key, value| "#{key}: #{value.inspect}" }.join(", ")
+      end
+
+      def format_index_parts(options)
+        if options.is_a?(Hash)
+          "{ #{format_options(options)} }"
+        else
+          options.inspect
+        end
+      end
+
       def remove_prefix_and_suffix(table)
-        table.gsub(/^(#{@options[:table_name_prefix]})(.+)(#{@options[:table_name_suffix]})$/,  "\\2")
+        prefix = Regexp.escape(@options[:table_name_prefix].to_s)
+        suffix = Regexp.escape(@options[:table_name_suffix].to_s)
+        table.sub(/\A#{prefix}(.+)#{suffix}\z/, "\\1")
       end
 
       def ignored?(table_name)

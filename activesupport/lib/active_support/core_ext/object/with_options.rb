@@ -1,4 +1,6 @@
-require 'active_support/option_merger'
+# frozen_string_literal: true
+
+require "active_support/option_merger"
 
 class Object
   # An elegant way to factor duplication out of options passed to a series of
@@ -60,10 +62,40 @@ class Object
   #
   #   validates :content, length: { minimum: 50 }, if: -> { content.present? }
   #
-  # Hence the inherited default for `if` key is ignored.
+  # Hence the inherited default for +if+ key is ignored.
+  #
+  # NOTE: You cannot call class methods implicitly inside of +with_options+.
+  # You can access these methods using the class name instead:
+  #
+  #   class Phone < ActiveRecord::Base
+  #     enum phone_number_type: { home: 0, office: 1, mobile: 2 }
+  #
+  #     with_options presence: true do
+  #       validates :phone_number_type, inclusion: { in: Phone.phone_number_types.keys }
+  #     end
+  #   end
+  #
+  # When the block argument is omitted, the decorated Object instance is returned:
+  #
+  #   module MyStyledHelpers
+  #     def styled
+  #       with_options style: "color: red;"
+  #     end
+  #   end
+  #
+  #   styled.link_to "I'm red", "/"
+  #   # => <a href="/" style="color: red;">I'm red</a>
+  #
+  #   styled.button_tag "I'm red too!"
+  #   # => <button style="color: red;">I'm red too!</button>
   #
   def with_options(options, &block)
     option_merger = ActiveSupport::OptionMerger.new(self, options)
-    block.arity.zero? ? option_merger.instance_eval(&block) : block.call(option_merger)
+
+    if block
+      block.arity.zero? ? option_merger.instance_eval(&block) : block.call(option_merger)
+    else
+      option_merger
+    end
   end
 end

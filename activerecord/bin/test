@@ -1,6 +1,15 @@
 #!/usr/bin/env ruby
-COMPONENT_ROOT = File.expand_path("../../", __FILE__)
-require File.expand_path("../tools/test", COMPONENT_ROOT)
+# frozen_string_literal: true
+
+adapter_index = ARGV.index("--adapter") || ARGV.index("-a")
+if adapter_index
+  ARGV.delete_at(adapter_index)
+  ENV["ARCONN"] = ARGV.delete_at(adapter_index).strip
+end
+
+COMPONENT_ROOT = File.expand_path("..", __dir__)
+require_relative "../test/support/tools"
+
 module Minitest
   def self.plugin_active_record_options(opts, options)
     opts.separator ""
@@ -14,6 +23,5 @@ module Minitest
   end
 end
 
-Minitest.extensions.unshift 'active_record'
-
-exit Minitest.run(ARGV)
+Minitest.load_plugins
+Minitest.extensions.unshift "active_record"

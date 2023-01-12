@@ -1,5 +1,7 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/mailer/mailer_generator'
+# frozen_string_literal: true
+
+require "generators/generators_test_helper"
+require "rails/generators/mailer/mailer_generator"
 
 class MailerGeneratorTest < Rails::Generators::TestCase
   include GeneratorsTestHelper
@@ -9,13 +11,13 @@ class MailerGeneratorTest < Rails::Generators::TestCase
     run_generator
     assert_file "app/mailers/notifier_mailer.rb" do |mailer|
       assert_match(/class NotifierMailer < ApplicationMailer/, mailer)
-      assert_no_match(/default from: "from@example.com"/, mailer)
+      assert_no_match(/default from: "from@example\.com"/, mailer)
       assert_no_match(/layout :mailer_notifier/, mailer)
     end
 
-    assert_file 'app/mailers/application_mailer.rb' do |mailer|
+    assert_file "app/mailers/application_mailer.rb" do |mailer|
       assert_match(/class ApplicationMailer < ActionMailer::Base/, mailer)
-      assert_match(/default from: 'from@example.com'/, mailer)
+      assert_match(/default from: 'from@example\.com'/, mailer)
       assert_match(/layout 'mailer'/, mailer)
     end
   end
@@ -29,8 +31,8 @@ class MailerGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_check_class_collision
-    Object.send :const_set, :NotifierMailer, Class.new
-    content = capture(:stderr){ run_generator }
+    Object.const_set :NotifierMailer, Class.new
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailer' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailer
@@ -44,30 +46,30 @@ class MailerGeneratorTest < Rails::Generators::TestCase
       assert_match(/test "bar"/, test)
     end
     assert_file "test/mailers/previews/notifier_mailer_preview.rb" do |preview|
-      assert_match(/\# Preview all emails at http:\/\/localhost\:3000\/rails\/mailers\/notifier_mailer/, preview)
+      assert_match(/\# Preview all emails at http:\/\/localhost:3000\/rails\/mailers\/notifier_mailer/, preview)
       assert_match(/class NotifierMailerPreview < ActionMailer::Preview/, preview)
-      assert_match(/\# Preview this email at http:\/\/localhost\:3000\/rails\/mailers\/notifier_mailer\/foo/, preview)
+      assert_match(/\# Preview this email at http:\/\/localhost:3000\/rails\/mailers\/notifier_mailer\/foo/, preview)
       assert_instance_method :foo, preview do |foo|
-        assert_match(/NotifierMailer.foo/, foo)
+        assert_match(/NotifierMailer\.foo/, foo)
       end
-      assert_match(/\# Preview this email at http:\/\/localhost\:3000\/rails\/mailers\/notifier_mailer\/bar/, preview)
+      assert_match(/\# Preview this email at http:\/\/localhost:3000\/rails\/mailers\/notifier_mailer\/bar/, preview)
       assert_instance_method :bar, preview do |bar|
-        assert_match(/NotifierMailer.bar/, bar)
+        assert_match(/NotifierMailer\.bar/, bar)
       end
     end
   end
 
   def test_check_test_class_collision
-    Object.send :const_set, :NotifierMailerTest, Class.new
-    content = capture(:stderr){ run_generator }
+    Object.const_set :NotifierMailerTest, Class.new
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailerTest' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailerTest
   end
 
   def test_check_preview_class_collision
-    Object.send :const_set, :NotifierMailerPreview, Class.new
-    content = capture(:stderr){ run_generator }
+    Object.const_set :NotifierMailerPreview, Class.new
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailerPreview' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailerPreview
@@ -117,16 +119,16 @@ class MailerGeneratorTest < Rails::Generators::TestCase
     assert_match(/haml \[not found\]/, content)
   end
 
-  def test_mailer_with_namedspaced_mailer
+  def test_mailer_with_namespaced_mailer
     run_generator ["Farm::Animal", "moos"]
     assert_file "app/mailers/farm/animal_mailer.rb" do |mailer|
       assert_match(/class Farm::AnimalMailer < ApplicationMailer/, mailer)
       assert_match(/en\.farm\.animal_mailer\.moos\.subject/, mailer)
     end
     assert_file "test/mailers/previews/farm/animal_mailer_preview.rb" do |preview|
-      assert_match(/\# Preview all emails at http:\/\/localhost\:3000\/rails\/mailers\/farm\/animal_mailer/, preview)
+      assert_match(/\# Preview all emails at http:\/\/localhost:3000\/rails\/mailers\/farm\/animal_mailer/, preview)
       assert_match(/class Farm::AnimalMailerPreview < ActionMailer::Preview/, preview)
-      assert_match(/\# Preview this email at http:\/\/localhost\:3000\/rails\/mailers\/farm\/animal_mailer\/moos/, preview)
+      assert_match(/\# Preview this email at http:\/\/localhost:3000\/rails\/mailers\/farm\/animal_mailer\/moos/, preview)
     end
     assert_file "app/views/farm/animal_mailer/moos.text.erb"
     assert_file "app/views/farm/animal_mailer/moos.html.erb"
@@ -137,12 +139,12 @@ class MailerGeneratorTest < Rails::Generators::TestCase
 
     assert_file "app/mailers/notifier_mailer.rb" do |mailer|
       assert_instance_method :foo, mailer do |foo|
-        assert_match(/mail to: "to@example.org"/, foo)
+        assert_match(/mail to: "to@example\.org"/, foo)
         assert_match(/@greeting = "Hi"/, foo)
       end
 
       assert_instance_method :bar, mailer do |bar|
-        assert_match(/mail to: "to@example.org"/, bar)
+        assert_match(/mail to: "to@example\.org"/, bar)
         assert_match(/@greeting = "Hi"/, bar)
       end
     end

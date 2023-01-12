@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Ruby on Rails 3.1 Release Notes
 ===============================
@@ -11,7 +11,7 @@ Highlights in Rails 3.1:
 * jQuery as the default JavaScript library
 
 These release notes cover only the major changes. To learn about various bug
-fixes and changes, please refer to the change logs or check out the [list of
+fixes and changes, please refer to the changelogs or check out the [list of
 commits](https://github.com/rails/rails/commits/3-1-stable) in the main Rails
 repository on GitHub.
 
@@ -26,7 +26,7 @@ If you're upgrading an existing application, it's a great idea to have good test
 
 Rails 3.1 requires Ruby 1.8.7 or higher. Support for all of the previous Ruby versions has been dropped officially and you should upgrade as early as possible. Rails 3.1 is also compatible with Ruby 1.9.2.
 
-TIP: Note that Ruby 1.8.7 p248 and p249 have marshaling bugs that crash Rails. Ruby Enterprise Edition have these fixed since release 1.8.7-2010.02 though. On the 1.9 front, Ruby 1.9.1 is not usable because it outright segfaults, so if you want to use 1.9.x jump on 1.9.2 for smooth sailing.
+TIP: Note that Ruby 1.8.7 p248 and p249 have marshalling bugs that crash Rails. Ruby Enterprise Edition have these fixed since release 1.8.7-2010.02 though. On the 1.9 front, Ruby 1.9.1 is not usable because it outright segfaults, so if you want to use 1.9.x jump on 1.9.2 for smooth sailing.
 
 ### What to update in your apps
 
@@ -99,7 +99,7 @@ gem 'jquery-rails'
     # config.assets.manifest = YOUR_PATH
 
     # Precompile additional assets (application.js, application.css, and all non-JS/CSS are already added)
-    # config.assets.precompile `= %w( search.js )
+    # config.assets.precompile `= %w( admin.js admin.css )
 
 
     # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
@@ -151,7 +151,7 @@ $ cd myapp
 
 Rails now uses a `Gemfile` in the application root to determine the gems you require for your application to start. This `Gemfile` is processed by the [Bundler](https://github.com/carlhuda/bundler) gem, which then installs all your dependencies. It can even install all the dependencies locally to your application so that it doesn't depend on the system gems.
 
-More information: - [bundler homepage](http://bundler.io/)
+More information: - [bundler homepage](https://bundler.io/)
 
 ### Living on the Edge
 
@@ -221,7 +221,7 @@ Railties
 
 * Added `Rack::Cache` to the default middleware stack.
 
-* Engines received a major update - You can mount them at any path, enable assets, run generators etc.
+* Engines received a major update - You can mount them at any path, enable assets, run generators, etc.
 
 Action Pack
 -----------
@@ -240,7 +240,7 @@ Action Pack
 
 * Added `config.action_controller.include_all_helpers`. By default `helper :all` is done in `ActionController::Base`, which includes all the helpers by default. Setting `include_all_helpers` to `false` will result in including only application_helper and the helper corresponding to controller (like foo_helper for foo_controller).
 
-* `url_for` and named url helpers now accept `:subdomain` and `:domain` as options.
+* `url_for` and named URL helpers now accept `:subdomain` and `:domain` as options.
 
 * Added `Base.http_basic_authenticate_with` to do simple http basic authentication with a single class method call.
 
@@ -291,9 +291,9 @@ Action Pack
     end
     ```
 
-    You can restrict it to some actions by using `:only` or `:except`. Please read the docs at [`ActionController::Streaming`](http://api.rubyonrails.org/v3.1.0/classes/ActionController/Streaming.html) for more information.
+    You can restrict it to some actions by using `:only` or `:except`. Please read the docs at [`ActionController::Streaming`](https://api.rubyonrails.org/v3.1.0/classes/ActionController/Streaming.html) for more information.
 
-* The redirect route method now also accepts a hash of options which will only change the parts of the url in question, or an object which responds to call, allowing for redirects to be reused.
+* The redirect route method now also accepts a hash of options which will only change the parts of the URL in question, or an object which responds to call, allowing for redirects to be reused.
 
 ### Action Dispatch
 
@@ -455,7 +455,7 @@ Active Record
     ```ruby
     class FooMigration < ActiveRecord::Migration
       def up # Not self.up
-        ...
+        # ...
       end
     end
     ```
@@ -556,6 +556,6 @@ Deprecations:
 Credits
 -------
 
-See the [full list of contributors to Rails](http://contributors.rubyonrails.org/) for the many people who spent many hours making Rails, the stable and robust framework it is. Kudos to all of them.
+See the [full list of contributors to Rails](https://contributors.rubyonrails.org/) for the many people who spent many hours making Rails, the stable and robust framework it is. Kudos to all of them.
 
 Rails 3.1 Release Notes were compiled by [Vijay Dev](https://github.com/vijaydev)

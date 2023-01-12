@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Ruby on Rails 3.0 Release Notes
 ===============================
@@ -38,7 +38,7 @@ If you're upgrading an existing application, it's a great idea to have good test
 
 Rails 3.0 requires Ruby 1.8.7 or higher. Support for all of the previous Ruby versions has been dropped officially and you should upgrade as early as possible. Rails 3.0 is also compatible with Ruby 1.9.2.
 
-TIP: Note that Ruby 1.8.7 p248 and p249 have marshaling bugs that crash Rails 3.0. Ruby Enterprise Edition have these fixed since release 1.8.7-2010.02 though. On the 1.9 front, Ruby 1.9.1 is not usable because it outright segfaults on Rails 3.0, so if you want to use Rails 3 with 1.9.x jump on 1.9.2 for smooth sailing.
+TIP: Note that Ruby 1.8.7 p248 and p249 have marshalling bugs that crash Rails 3.0. Ruby Enterprise Edition have these fixed since release 1.8.7-2010.02 though. On the 1.9 front, Ruby 1.9.1 is not usable because it outright segfaults on Rails 3.0, so if you want to use Rails 3 with 1.9.x jump on 1.9.2 for smooth sailing.
 
 ### Rails Application object
 
@@ -73,7 +73,7 @@ $ ruby script/plugin install git://github.com/rails/rails_upgrade.git
 
 You can see an example of how that works at [Rails Upgrade is now an Official Plugin](http://omgbloglol.com/post/364624593/rails-upgrade-is-now-an-official-plugin)
 
-Aside from Rails Upgrade tool, if you need more help, there are people on IRC and [rubyonrails-talk](http://groups.google.com/group/rubyonrails-talk) that are probably doing the same thing, possibly hitting the same issues. Be sure to blog your own experiences when upgrading so others can benefit from your knowledge!
+Aside from Rails Upgrade tool, if you need more help, there are people on IRC and [rubyonrails-talk](https://discuss.rubyonrails.org/c/rubyonrails-talk) that are probably doing the same thing, possibly hitting the same issues. Be sure to blog your own experiences when upgrading so others can benefit from your knowledge!
 
 Creating a Rails 3.0 application
 --------------------------------
@@ -88,7 +88,7 @@ $ cd myapp
 
 Rails now uses a `Gemfile` in the application root to determine the gems you require for your application to start. This `Gemfile` is processed by the [Bundler](https://github.com/bundler/bundler) which then installs all your dependencies. It can even install all the dependencies locally to your application so that it doesn't depend on the system gems.
 
-More information: - [bundler homepage](http://bundler.io/)
+More information: - [bundler homepage](https://bundler.io/)
 
 ### Living on the Edge
 
@@ -131,7 +131,7 @@ More information: - [Make Any Ruby Object Feel Like ActiveRecord](http://yehudak
 
 ### Controller Abstraction
 
-Another big part of decoupling the core components was creating a base superclass that is separated from the notions of HTTP in order to handle rendering of views etc. This creation of `AbstractController` allowed `ActionController` and `ActionMailer` to be greatly simplified with common code removed from all these libraries and put into Abstract Controller.
+Another big part of decoupling the core components was creating a base superclass that is separated from the notions of HTTP in order to handle rendering of views, etc. This creation of `AbstractController` allowed `ActionController` and `ActionMailer` to be greatly simplified with common code removed from all these libraries and put into Abstract Controller.
 
 More Information: - [Rails Edge Architecture](http://yehudakatz.com/2009/06/11/rails-edge-architecture/)
 
@@ -153,9 +153,9 @@ More information: - [New Action Mailer API in Rails 3](http://lindsaar.net/2010/
 Documentation
 -------------
 
-The documentation in the Rails tree is being updated with all the API changes, additionally, the [Rails Edge Guides](http://edgeguides.rubyonrails.org/) are being updated one by one to reflect the changes in Rails 3.0. The guides at [guides.rubyonrails.org](http://guides.rubyonrails.org/) however will continue to contain only the stable version of Rails (at this point, version 2.3.5, until 3.0 is released).
+The documentation in the Rails tree is being updated with all the API changes, additionally, the [Rails Edge Guides](https://edgeguides.rubyonrails.org/) are being updated one by one to reflect the changes in Rails 3.0. The guides at [guides.rubyonrails.org](https://guides.rubyonrails.org/) however will continue to contain only the stable version of Rails (at this point, version 2.3.5, until 3.0 is released).
 
-More Information: - [Rails Documentation Projects](http://weblog.rubyonrails.org/2009/1/15/rails-documentation-projects.)
+More Information: - [Rails Documentation Projects](https://weblog.rubyonrails.org/2009/1/15/rails-documentation-projects)
 
 
 Internationalization
@@ -174,7 +174,7 @@ More Information: - [Rails 3 I18n changes](http://blog.plataformatec.com.br/2010
 Railties
 --------
 
-With the decoupling of the main Rails frameworks, Railties got a huge overhaul so as to make linking up frameworks, engines or plugins as painless and extensible as possible:
+With the decoupling of the main Rails frameworks, Railties got a huge overhaul so as to make linking up frameworks, engines, or plugins as painless and extensible as possible:
 
 * Each application now has its own name space, application is started with `YourAppName.boot` for example, makes interacting with other applications a lot easier.
 * Anything under `Rails.root/app` is now added to the load path, so you can make `app/observers/user_observer.rb` and Rails will load it without any modifications.
@@ -213,7 +213,7 @@ Railties now deprecates:
 More information:
 
 * [Discovering Rails 3 generators](http://blog.plataformatec.com.br/2010/01/discovering-rails-3-generators)
-* [The Rails Module (in Rails 3)](http://litanyagainstfear.com/blog/2010/02/03/the-rails-module/)
+* [The Rails Module (in Rails 3)](http://quaran.to/blog/2010/02/03/the-rails-module/)
 
 Action Pack
 -----------
@@ -250,7 +250,7 @@ Deprecations:
 More Information:
 
 * [Render Options in Rails 3](https://blog.engineyard.com/2010/render-options-in-rails-3)
-* [Three reasons to love ActionController::Responder](http://weblog.rubyonrails.org/2009/8/31/three-reasons-love-responder)
+* [Three reasons to love ActionController::Responder](https://weblog.rubyonrails.org/2009/8/31/three-reasons-love-responder)
 
 
 ### Action Dispatch
@@ -338,7 +338,7 @@ Helpers that do something else, like `cache` or `content_for`, are not affected 
 #### Other Changes
 
 * You no longer need to call `h(string)` to escape HTML output, it is on by default in all view templates. If you want the unescaped string, call `raw(string)`.
-* Helpers now output HTML 5 by default.
+* Helpers now output HTML5 by default.
 * Form label helper now pulls values from I18n with a single value, so `f.label :name` will pull the `:name` translation.
 * I18n select label on should now be :en.helpers.select instead of :en.support.select.
 * You no longer need to place a minus sign at the end of a Ruby interpolation inside an ERB template to remove the trailing carriage return in the HTML output.
@@ -422,7 +422,7 @@ More Information:
 Active Record
 -------------
 
-Active Record received a lot of attention in Rails 3.0, including abstraction into Active Model, a full update to the Query interface using Arel, validation updates and many enhancements and fixes. All of the Rails 2.x API will be usable through a compatibility layer that will be supported until version 3.1.
+Active Record received a lot of attention in Rails 3.0, including abstraction into Active Model, a full update to the Query interface using Arel, validation updates, and many enhancements and fixes. All of the Rails 2.x API will be usable through a compatibility layer that will be supported until version 3.1.
 
 
 ### Query Interface
@@ -607,6 +607,6 @@ More Information:
 Credits
 -------
 
-See the [full list of contributors to Rails](http://contributors.rubyonrails.org/) for the many people who spent many hours making Rails 3. Kudos to all of them.
+See the [full list of contributors to Rails](https://contributors.rubyonrails.org/) for the many people who spent many hours making Rails 3. Kudos to all of them.
 
 Rails 3.0 Release Notes were compiled by [Mikel Lindsaar](http://lindsaar.net).

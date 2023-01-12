@@ -1,5 +1,6 @@
-module ActiveRecord
+# frozen_string_literal: true
 
+module ActiveRecord
   # Statement cache is used to cache a single statement in order to avoid creating the AST again.
   # Initializing the cache is done by passing the statement in the create block:
   #
@@ -8,12 +9,12 @@ module ActiveRecord
   #   end
   #
   # The cached statement is executed by using the
-  # [connection.execute]{rdoc-ref:ConnectionAdapters::DatabaseStatements#execute} method:
+  # {connection.execute}[rdoc-ref:ConnectionAdapters::DatabaseStatements#execute] method:
   #
-  #   cache.execute([], Book, Book.connection)
+  #   cache.execute([], Book.connection)
   #
   # The relation returned by the block is cached, and for each
-  # [execute]{rdoc-ref:ConnectionAdapters::DatabaseStatements#execute}
+  # {execute}[rdoc-ref:ConnectionAdapters::DatabaseStatements#execute]
   # call the cached relation gets duped. Database is queried when +to_a+ is called on the relation.
   #
   # If you want to cache the statement without the values you can use the +bind+ method of the
@@ -25,7 +26,7 @@ module ActiveRecord
   #
   # And pass the bind values as the first argument of +execute+ call.
   #
-  #   cache.execute(["my book"], Book, Book.connection)
+  #   cache.execute(["my book"], Book.connection)
   class StatementCache # :nodoc:
     class Substitute; end # :nodoc:
 
@@ -40,28 +41,69 @@ module ActiveRecord
     end
 
     class PartialQuery < Query # :nodoc:
-      def initialize values
+      def initialize(values)
         @values = values
-        @indexes = values.each_with_index.find_all { |thing,i|
-          Arel::Nodes::BindParam === thing
+        @indexes = values.each_with_index.find_all { |thing, i|
+          Substitute === thing
         }.map(&:last)
       end
 
       def sql_for(binds, connection)
         val = @values.dup
-        binds = connection.prepare_binds_for_database(binds)
-        @indexes.each { |i| val[i] = connection.quote(binds.shift) }
+        @indexes.each do |i|
+          value = binds.shift
+          if ActiveModel::Attribute === value
+            value = value.value_for_database
+          end
+          val[i] = connection.quote(value)
+        end
         val.join
       end
     end
 
-    def self.query(visitor, ast)
-      Query.new visitor.accept(ast, Arel::Collectors::SQLString.new).value
+    class PartialQueryCollector
+      attr_accessor :preparable
+
+      def initialize
+        @parts = []
+        @binds = []
+      end
+
+      def <<(str)
+        @parts << str
+        self
+      end
+
+      def add_bind(obj)
+        @binds << obj
+        @parts << Substitute.new
+        self
+      end
+
+      def add_binds(binds, proc_for_binds = nil)
+        @binds.concat proc_for_binds ? binds.map(&proc_for_binds) : binds
+        binds.size.times do |i|
+          @parts << ", " unless i == 0
+          @parts << Substitute.new
+        end
+        self
+      end
+
+      def value
+        [@parts, @binds]
+      end
     end
 
-    def self.partial_query(visitor, ast, collector)
-      collected = visitor.accept(ast, collector).value
-      PartialQuery.new collected
+    def self.query(sql)
+      Query.new(sql)
+    end
+
+    def self.partial_query(values)
+      PartialQuery.new(values)
+    end
+
+    def self.partial_query_collector
+      PartialQueryCollector.new
     end
 
     class Params # :nodoc:
@@ -70,11 +112,11 @@ module ActiveRecord
 
     class BindMap # :nodoc:
       def initialize(bound_attributes)
-        @indexes   = []
+        @indexes = []
         @bound_attributes = bound_attributes
 
         bound_attributes.each_with_index do |attr, i|
-          if Substitute === attr.value
+          if ActiveModel::Attribute === attr && Substitute === attr.value
             @indexes << i
           end
         end
@@ -82,32 +124,41 @@ module ActiveRecord
 
       def bind(values)
         bas = @bound_attributes.dup
-        @indexes.each_with_index { |offset,i| bas[offset] = bas[offset].with_cast_value(values[i]) }
+        @indexes.each_with_index { |offset, i| bas[offset] = bas[offset].with_cast_value(values[i]) }
         bas
       end
     end
 
-    attr_reader :bind_map, :query_builder
-
-    def self.create(connection, block = Proc.new)
-      relation      = block.call Params.new
-      bind_map      = BindMap.new relation.bound_attributes
-      query_builder = connection.cacheable_query relation.arel
-      new query_builder, bind_map
+    def self.create(connection, callable = nil, &block)
+      relation = (callable || block).call Params.new
+      query_builder, binds = connection.cacheable_query(self, relation.arel)
+      bind_map = BindMap.new(binds)
+      new(query_builder, bind_map, relation.klass)
     end
 
-    def initialize(query_builder, bind_map)
+    def initialize(query_builder, bind_map, klass)
       @query_builder = query_builder
-      @bind_map      = bind_map
+      @bind_map = bind_map
+      @klass = klass
     end
 
-    def execute(params, klass, connection)
+    def execute(params, connection, &block)
       bind_values = bind_map.bind params
 
       sql = query_builder.sql_for bind_values, connection
 
-      klass.find_by_sql(sql, bind_values, preparable: true)
+      klass.find_by_sql(sql, bind_values, preparable: true, &block)
+    rescue ::RangeError
+      []
     end
-    alias :call :execute
+
+    def self.unsupported_value?(value)
+      case value
+      when NilClass, Array, Range, Hash, Relation, Base then true
+      end
+    end
+
+    private
+      attr_reader :query_builder, :bind_map, :klass
   end
 end

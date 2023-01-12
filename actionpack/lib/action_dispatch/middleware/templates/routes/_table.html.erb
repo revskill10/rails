@@ -17,6 +17,10 @@
     line-height: 15px;
   }
 
+  #route_table thead tr.bottom th input#search {
+    -webkit-appearance: textfield;
+  }
+
   #route_table tbody tr {
     border-bottom: 1px solid #ddd;
   }
@@ -45,6 +49,17 @@
     width: 80%;
     font-size: inherit;
   }
+
+  @media (prefers-color-scheme: dark) {
+    #route_table tbody tr:nth-child(odd) {
+      background: #282828;
+    }
+
+    #route_table tbody.exact_matches tr,
+    #route_table tbody.fuzzy_matches tr {
+      background: DarkSlateGrey;
+    }
+  }
 <% end %>
 
 <table id='route_table' class='route_table'>
@@ -60,7 +75,7 @@
         <%= link_to "Path", "#", 'data-route-helper' => '_path',
                     title: "Returns a relative path (without the http or domain)" %> /
         <%= link_to "Url", "#", 'data-route-helper' => '_url',
-                    title: "Returns an absolute url (with the http and domain)"   %>
+                    title: "Returns an absolute URL (with the http and domain)"   %>
       </th>
       <th><%# HTTP Verb %>
       </th>
@@ -80,20 +95,20 @@
   </tbody>
 </table>
 
-<script type='text/javascript'>
-  // support forEarch iterator on NodeList
+<script>
+  // support forEach iterator on NodeList
   NodeList.prototype.forEach = Array.prototype.forEach;
 
   // Enables path search functionality
   function setupMatchPaths() {
     // Check if there are any matched results in a section
-    function checkNoMatch(section, noMatchText) {
+    function checkNoMatch(section, trElement) {
       if (section.children.length <= 1) {
-        section.innerHTML += noMatchText;
+        section.appendChild(trElement);
       }
     }
 
-    // get JSON from url and invoke callback with result
+    // get JSON from URL and invoke callback with result
     function getJSON(url, success) {
       var xhr = new XMLHttpRequest();
       xhr.open('GET', url);
@@ -130,21 +145,30 @@
       }
     }
 
+    function buildTr(string) {
+      var tr = document.createElement('tr');
+      var th = document.createElement('th');
+      th.setAttribute('colspan', 4);
+      tr.appendChild(th);
+      th.innerText = string;
+      return tr;
+    }
+
     // On key press perform a search for matching paths
     delayedKeyup(searchElem, function() {
       var path = sanitizePath(searchElem.value),
-          defaultExactMatch = '<tr><th colspan="4">Paths Matching (' + path +'):</th></tr>',
-          defaultFuzzyMatch = '<tr><th colspan="4">Paths Containing (' + path +'):</th></tr>',
-          noExactMatch      = '<tr><th colspan="4">No Exact Matches Found</th></tr>',
-          noFuzzyMatch      = '<tr><th colspan="4">No Fuzzy Matches Found</th></tr>';
+          defaultExactMatch = buildTr('Paths Matching (' + path + '):'),
+          defaultFuzzyMatch = buildTr('Paths Containing (' + path +'):'),
+          noExactMatch      = buildTr('No Exact Matches Found'),
+          noFuzzyMatch      = buildTr('No Fuzzy Matches Found');
 
       if (!path)
         return searchElem.onblur();
 
       getJSON('/rails/info/routes?path=' + path, function(matches){
         // Clear out results section
-        exactSection.innerHTML = defaultExactMatch;
-        fuzzySection.innerHTML = defaultFuzzyMatch;
+        exactSection.replaceChildren(defaultExactMatch);
+        fuzzySection.replaceChildren(defaultFuzzyMatch);
 
         // Display exact matches and fuzzy matches
         pathElements.forEach(function(elem) {
@@ -193,4 +217,7 @@
 
   setupMatchPaths();
   setupRouteToggleHelperLinks();
+
+  // Focus the search input after page has loaded
+  document.getElementById('search').focus();
 </script>

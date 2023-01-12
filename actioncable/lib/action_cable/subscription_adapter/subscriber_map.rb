@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 module ActionCable
   module SubscriptionAdapter
     class SubscriberMap
       def initialize
-        @subscribers = Hash.new { |h,k| h[k] = [] }
+        @subscribers = Hash.new { |h, k| h[k] = [] }
         @sync = Mutex.new
       end
 

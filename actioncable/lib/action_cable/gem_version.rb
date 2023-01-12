@@ -1,11 +1,13 @@
+# frozen_string_literal: true
+
 module ActionCable
-  # Returns the version of the currently loaded Action Cable as a <tt>Gem::Version</tt>.
+  # Returns the currently loaded version of Action Cable as a <tt>Gem::Version</tt>.
   def self.gem_version
     Gem::Version.new VERSION::STRING
   end
 
   module VERSION
-    MAJOR = 5
+    MAJOR = 7
     MINOR = 1
     TINY  = 0
     PRE   = "alpha"

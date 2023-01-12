@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "cases/helper"
 
 module ActiveRecord
@@ -32,8 +34,7 @@ module ActiveRecord
       end
 
       private
-
-      delegate(*CONNECTION_METHODS, to: :connection)
+        delegate(*CONNECTION_METHODS, to: :connection)
     end
   end
 end

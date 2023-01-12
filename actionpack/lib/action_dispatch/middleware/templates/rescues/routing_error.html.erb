@@ -1,20 +1,20 @@
-<header>
+<header role="banner">
   <h1>Routing Error</h1>
 </header>
-<div id="container">
-  <h2><%= h @exception.message %></h2>
-  <% unless @exception.failures.empty? %>
+<main role="main" id="container">
+  <h2><%= h @exception_wrapper.message %></h2>
+  <% unless @exception_wrapper.failures.empty? %>
     <p>
       <h2>Failure reasons:</h2>
       <ol>
-      <% @exception.failures.each do |route, reason| %>
+      <% @exception_wrapper.failures.each do |route, reason| %>
         <li><code><%= route.inspect.delete('\\') %></code> failed because <%= reason.downcase %></li>
       <% end %>
       </ol>
     </p>
   <% end %>
 
-  <%= render template: "rescues/_trace" %>
+  <%= render "rescues/trace", traces: @traces, trace_to_show: @trace_to_show %>
 
   <% if @routes_inspector %>
     <h2>
@@ -29,4 +29,4 @@
   <% end %>
 
   <%= render template: "rescues/_request_and_response" %>
-</div>
+</main>

@@ -1,6 +1,10 @@
+# frozen_string_literal: true
+
+require "action_dispatch/testing/request_encoder"
+
 module ActionDispatch
-  # Integration test methods such as ActionDispatch::Integration::Session#get
-  # and ActionDispatch::Integration::Session#post return objects of class
+  # Integration test methods such as Integration::RequestHelpers#get
+  # and Integration::RequestHelpers#post return objects of class
   # TestResponse, which represent the HTTP response results of the requested
   # controller actions.
   #
@@ -10,19 +14,30 @@ module ActionDispatch
       new response.status, response.headers, response.body
     end
 
-    # Was the response successful?
-    alias_method :success?, :successful?
-
-    # Was the URL not found?
-    alias_method :missing?, :not_found?
-
-    # Was there a server-side error?
-    alias_method :error?, :server_error?
-
-    attr_writer :response_parser # :nodoc:
-
+    # Returns a parsed body depending on the response MIME type. When a parser
+    # corresponding to the MIME type is not found, it returns the raw body.
+    #
+    # ==== Examples
+    #   get "/posts"
+    #   response.content_type      # => "text/html; charset=utf-8"
+    #   response.parsed_body.class # => String
+    #   response.parsed_body       # => "<!DOCTYPE html>\n<html>\n..."
+    #
+    #   get "/posts.json"
+    #   response.content_type      # => "application/json; charset=utf-8"
+    #   response.parsed_body.class # => Array
+    #   response.parsed_body       # => [{"id"=>42, "title"=>"Title"},...
+    #
+    #   get "/posts/42.json"
+    #   response.content_type      # => "application/json; charset=utf-8"
+    #   response.parsed_body.class # => Hash
+    #   response.parsed_body       # => {"id"=>42, "title"=>"Title"}
     def parsed_body
-      @parsed_body ||= @response_parser.call(body)
+      @parsed_body ||= response_parser.call(body)
+    end
+
+    def response_parser
+      @response_parser ||= RequestEncoder.parser(media_type)
     end
   end
 end

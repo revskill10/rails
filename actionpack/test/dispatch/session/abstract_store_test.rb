@@ -1,5 +1,7 @@
-require 'abstract_unit'
-require 'action_dispatch/middleware/session/abstract_store'
+# frozen_string_literal: true
+
+require "abstract_unit"
+require "action_dispatch/middleware/session/abstract_store"
 
 module ActionDispatch
   module Session
@@ -19,6 +21,10 @@ module ActionDispatch
         def write_session(env, sid, session, options)
           @sessions[sid] = session
         end
+
+        def session_exists?(req)
+          true
+        end
       end
 
       def test_session_is_set
@@ -37,7 +43,7 @@ module ActionDispatch
 
         assert @env
         session = Request::Session.find ActionDispatch::Request.new @env
-        session['foo'] = 'bar'
+        session["foo"] = "bar"
 
         as.call(@env)
         session1 = Request::Session.find ActionDispatch::Request.new @env
@@ -46,11 +52,22 @@ module ActionDispatch
         assert_equal session.to_hash, session1.to_hash
       end
 
-      private
-      def app(&block)
-        @env = nil
-        lambda { |env| @env = env }
+      def test_update_raises_an_exception_if_arg_not_hashable
+        env = {}
+        as = MemoryStore.new app
+        as.call(env)
+        session = Request::Session.find ActionDispatch::Request.new env
+
+        assert_raise TypeError do
+          session.update("Not hashable")
+        end
       end
+
+      private
+        def app(&block)
+          @env = nil
+          lambda { |env| @env = env }
+        end
     end
   end
 end

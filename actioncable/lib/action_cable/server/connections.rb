@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionCable
   module Server
     # Collection class for all the connections that have been established on this specific server. Remember, usually you'll run many Action Cable servers, so
@@ -22,7 +24,7 @@ module ActionCable
       # disconnect.
       def setup_heartbeat_timer
         @heartbeat_timer ||= event_loop.timer(BEAT_INTERVAL) do
-          event_loop.post { connections.map(&:beat) }
+          event_loop.post { connections.each(&:beat) }
         end
       end
 

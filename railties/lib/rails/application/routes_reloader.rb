@@ -1,31 +1,41 @@
+# frozen_string_literal: true
+
 require "active_support/core_ext/module/delegation"
 
 module Rails
   class Application
     class RoutesReloader
-      attr_reader :route_sets, :paths
+      include ActiveSupport::Callbacks
+
+      attr_reader :route_sets, :paths, :external_routes
+      attr_accessor :eager_load
+      attr_writer :run_after_load_paths # :nodoc:
       delegate :execute_if_updated, :execute, :updated?, to: :updater
 
       def initialize
         @paths      = []
         @route_sets = []
+        @external_routes = []
+        @eager_load = false
       end
 
       def reload!
         clear!
         load_paths
         finalize!
+        route_sets.each(&:eager_load!) if eager_load
       ensure
         revert
       end
 
     private
-
       def updater
         @updater ||= begin
-          updater = ActiveSupport::FileUpdateChecker.new(paths) { reload! }
-          updater.execute
-          updater
+          dirs = @external_routes.each_with_object({}) do |dir, hash|
+            hash[dir.to_s] = %w(rb)
+          end
+
+          ActiveSupport::FileUpdateChecker.new(paths, dirs) { reload! }
         end
       end
 
@@ -38,6 +48,11 @@ module Rails
 
       def load_paths
         paths.each { |path| load(path) }
+        run_after_load_paths.call
+      end
+
+      def run_after_load_paths
+        @run_after_load_paths ||= -> { }
       end
 
       def finalize!

@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 require "active_support/notifications"
 
 module ActiveSupport
-  # Raised when <tt>ActiveSupport::Deprecation::Behavior#behavior</tt> is set with <tt>:raise</tt>.
+  # Raised when ActiveSupport::Deprecation::Behavior#behavior is set with <tt>:raise</tt>.
   # You would set <tt>:raise</tt>, as a behavior to raise errors and proactively report exceptions from deprecations.
   class DeprecationException < StandardError
   end
@@ -9,35 +11,40 @@ module ActiveSupport
   class Deprecation
     # Default warning behaviors per Rails.env.
     DEFAULT_BEHAVIORS = {
-      raise: ->(message, callstack) {
+      raise: ->(message, callstack, deprecator) do
         e = DeprecationException.new(message)
         e.set_backtrace(callstack.map(&:to_s))
         raise e
-      },
+      end,
 
-      stderr: ->(message, callstack) {
+      stderr: ->(message, callstack, deprecator) do
         $stderr.puts(message)
-        $stderr.puts callstack.join("\n  ") if debug
-      },
+        $stderr.puts callstack.join("\n  ") if deprecator.debug
+      end,
 
-      log: ->(message, callstack) {
+      log: ->(message, callstack, deprecator) do
         logger =
             if defined?(Rails.logger) && Rails.logger
               Rails.logger
             else
-              require 'active_support/logger'
+              require "active_support/logger"
               ActiveSupport::Logger.new($stderr)
             end
         logger.warn message
-        logger.debug callstack.join("\n  ") if debug
-      },
+        logger.debug callstack.join("\n  ") if deprecator.debug
+      end,
 
-      notify: ->(message, callstack) {
-        ActiveSupport::Notifications.instrument("deprecation.rails",
-                                                :message => message, :callstack => callstack)
-      },
+      notify: ->(message, callstack, deprecator) do
+        ActiveSupport::Notifications.instrument(
+          "deprecation.#{deprecator.gem_name.underscore.tr("/", "_")}",
+          message: message,
+          callstack: callstack,
+          gem_name: deprecator.gem_name,
+          deprecation_horizon: deprecator.deprecation_horizon,
+        )
+      end,
 
-      silence: ->(message, callstack) {},
+      silence: ->(message, callstack, deprecator) { },
     }
 
     # Behavior module allows to determine how to display deprecation messages.
@@ -45,10 +52,10 @@ module ActiveSupport
     # constant. Available behaviors are:
     #
     # [+raise+]   Raise <tt>ActiveSupport::DeprecationException</tt>.
-    # [+stderr+]  Log all deprecation warnings to +$stderr+.
+    # [+stderr+]  Log all deprecation warnings to <tt>$stderr</tt>.
     # [+log+]     Log all deprecation warnings to +Rails.logger+.
     # [+notify+]  Use +ActiveSupport::Notifications+ to notify +deprecation.rails+.
-    # [+silence+] Do nothing.
+    # [+silence+] Do nothing. On Rails, set <tt>config.active_support.report_deprecations = false</tt> to disable all behaviors.
     #
     # Setting behaviors only affects deprecations that happen after boot time.
     # For more information you can read the documentation of the +behavior=+ method.
@@ -61,13 +68,18 @@ module ActiveSupport
         @behavior ||= [DEFAULT_BEHAVIORS[:stderr]]
       end
 
+      # Returns the current behavior for disallowed deprecations or if one isn't set, defaults to +:raise+.
+      def disallowed_behavior
+        @disallowed_behavior ||= [DEFAULT_BEHAVIORS[:raise]]
+      end
+
       # Sets the behavior to the specified value. Can be a single value, array,
       # or an object that responds to +call+.
       #
       # Available behaviors:
       #
       # [+raise+]   Raise <tt>ActiveSupport::DeprecationException</tt>.
-      # [+stderr+]  Log all deprecation warnings to +$stderr+.
+      # [+stderr+]  Log all deprecation warnings to <tt>$stderr</tt>.
       # [+log+]     Log all deprecation warnings to +Rails.logger+.
       # [+notify+]  Use +ActiveSupport::Notifications+ to notify +deprecation.rails+.
       # [+silence+] Do nothing.
@@ -79,12 +91,47 @@ module ActiveSupport
       #   ActiveSupport::Deprecation.behavior = :stderr
       #   ActiveSupport::Deprecation.behavior = [:stderr, :log]
       #   ActiveSupport::Deprecation.behavior = MyCustomHandler
-      #   ActiveSupport::Deprecation.behavior = ->(message, callstack) {
+      #   ActiveSupport::Deprecation.behavior = ->(message, callstack, deprecation_horizon, gem_name) {
       #     # custom stuff
       #   }
+      #
+      # If you are using Rails, you can set <tt>config.active_support.report_deprecations = false</tt> to disable
+      # all deprecation behaviors. This is similar to the +silence+ option but more performant.
       def behavior=(behavior)
-        @behavior = Array(behavior).map { |b| DEFAULT_BEHAVIORS[b] || b }
+        @behavior = Array(behavior).map { |b| DEFAULT_BEHAVIORS[b] || arity_coerce(b) }
       end
+
+      # Sets the behavior for disallowed deprecations (those configured by
+      # ActiveSupport::Deprecation.disallowed_warnings=) to the specified
+      # value. As with +behavior=+, this can be a single value, array, or an
+      # object that responds to +call+.
+      def disallowed_behavior=(behavior)
+        @disallowed_behavior = Array(behavior).map { |b| DEFAULT_BEHAVIORS[b] || arity_coerce(b) }
+      end
+
+      private
+        def arity_coerce(behavior)
+          unless behavior.respond_to?(:call)
+            raise ArgumentError, "#{behavior.inspect} is not a valid deprecation behavior."
+          end
+
+          case arity_of_callable(behavior)
+          when 2
+            ->(message, callstack, deprecator) do
+              behavior.call(message, callstack)
+            end
+          when -2..3
+            behavior
+          else
+            ->(message, callstack, deprecator) do
+              behavior.call(message, callstack, deprecator.deprecation_horizon, deprecator.gem_name)
+            end
+          end
+        end
+
+        def arity_of_callable(callable)
+          callable.respond_to?(:arity) ? callable.arity : callable.method(:call).arity
+        end
     end
   end
 end

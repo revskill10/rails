@@ -1,20 +1,22 @@
-require 'action_view/helpers/tag_helper'
+# frozen_string_literal: true
 
 module ActionView
-  module Helpers
+  module Helpers # :nodoc:
     module JavaScriptHelper
       JS_ESCAPE_MAP = {
-        '\\'    => '\\\\',
-        '</'    => '<\/',
+        "\\"    => "\\\\",
+        "</"    => '<\/',
         "\r\n"  => '\n',
         "\n"    => '\n',
         "\r"    => '\n',
         '"'     => '\\"',
-        "'"     => "\\'"
+        "'"     => "\\'",
+        "`"     => "\\`",
+        "$"     => "\\$"
       }
 
-      JS_ESCAPE_MAP["\342\200\250".force_encoding(Encoding::UTF_8).encode!] = '&#x2028;'
-      JS_ESCAPE_MAP["\342\200\251".force_encoding(Encoding::UTF_8).encode!] = '&#x2029;'
+      JS_ESCAPE_MAP[(+"\342\200\250").force_encoding(Encoding::UTF_8).encode!] = "&#x2028;"
+      JS_ESCAPE_MAP[(+"\342\200\251").force_encoding(Encoding::UTF_8).encode!] = "&#x2029;"
 
       # Escapes carriage returns and single and double quotes for JavaScript segments.
       #
@@ -23,12 +25,13 @@ module ActionView
       #
       #   $('some_element').replaceWith('<%= j render 'some/element_template' %>');
       def escape_javascript(javascript)
-        if javascript
-          result = javascript.gsub(/(\\|<\/|\r\n|\342\200\250|\342\200\251|[\n\r"'])/u) {|match| JS_ESCAPE_MAP[match] }
-          javascript.html_safe? ? result.html_safe : result
+        javascript = javascript.to_s
+        if javascript.empty?
+          result = ""
         else
-          ''
+          result = javascript.gsub(/(\\|<\/|\r\n|\342\200\250|\342\200\251|[\n\r"']|[`]|[$])/u, JS_ESCAPE_MAP)
         end
+        javascript.html_safe? ? result.html_safe : result
       end
 
       alias_method :j, :escape_javascript
@@ -46,10 +49,10 @@ module ActionView
       # +html_options+ may be a hash of attributes for the <tt>\<script></tt>
       # tag.
       #
-      #   javascript_tag "alert('All is good')", defer: 'defer'
+      #   javascript_tag "alert('All is good')", type: 'application/javascript'
       #
       # Returns:
-      #   <script defer="defer">
+      #   <script type="application/javascript">
       #   //<![CDATA[
       #   alert('All is good')
       #   //]]>
@@ -58,7 +61,14 @@ module ActionView
       # Instead of passing the content as an argument, you can also use a block
       # in which case, you pass your +html_options+ as the first parameter.
       #
-      #   <%= javascript_tag defer: 'defer' do -%>
+      #   <%= javascript_tag type: 'application/javascript' do -%>
+      #     alert('All is good')
+      #   <% end -%>
+      #
+      # If you have a content security policy enabled then you can add an automatic
+      # nonce value by passing <tt>nonce: true</tt> as part of +html_options+. Example:
+      #
+      #   <%= javascript_tag nonce: true do -%>
       #     alert('All is good')
       #   <% end -%>
       def javascript_tag(content_or_options_with_block = nil, html_options = {}, &block)
@@ -70,10 +80,14 @@ module ActionView
             content_or_options_with_block
           end
 
-        content_tag("script".freeze, javascript_cdata_section(content), html_options)
+        if html_options[:nonce] == true
+          html_options[:nonce] = content_security_policy_nonce
+        end
+
+        content_tag("script", javascript_cdata_section(content), html_options)
       end
 
-      def javascript_cdata_section(content) #:nodoc:
+      def javascript_cdata_section(content) # :nodoc:
         "\n//#{cdata_section("\n#{content}\n//")}\n".html_safe
       end
     end

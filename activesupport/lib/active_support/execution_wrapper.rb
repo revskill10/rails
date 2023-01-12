@@ -1,4 +1,8 @@
-require 'active_support/callbacks'
+# frozen_string_literal: true
+
+require "active_support/error_reporter"
+require "active_support/callbacks"
+require "concurrent/hash"
 
 module ActiveSupport
   class ExecutionWrapper
@@ -19,6 +23,23 @@ module ActiveSupport
       set_callback(:complete, *args, &block)
     end
 
+    RunHook = Struct.new(:hook) do # :nodoc:
+      def before(target)
+        hook_state = target.send(:hook_state)
+        hook_state[hook] = hook.run
+      end
+    end
+
+    CompleteHook = Struct.new(:hook) do # :nodoc:
+      def before(target)
+        hook_state = target.send(:hook_state)
+        if hook_state.key?(hook)
+          hook.complete hook_state[hook]
+        end
+      end
+      alias after before
+    end
+
     # Register an object to be invoked during both the +run+ and
     # +complete+ steps.
     #
@@ -29,19 +50,11 @@ module ActiveSupport
     # invoked in that situation.)
     def self.register_hook(hook, outer: false)
       if outer
-        run_args = [prepend: true]
-        complete_args = [:after]
+        to_run RunHook.new(hook), prepend: true
+        to_complete :after, CompleteHook.new(hook)
       else
-        run_args = complete_args = []
-      end
-
-      to_run(*run_args) do
-        hook_state[hook] = hook.run
-      end
-      to_complete(*complete_args) do
-        if hook_state.key?(hook)
-          hook.complete hook_state[hook]
-        end
+        to_run RunHook.new(hook)
+        to_complete CompleteHook.new(hook)
       end
     end
 
@@ -51,51 +64,68 @@ module ActiveSupport
     # after the work has been performed.
     #
     # Where possible, prefer +wrap+.
-    def self.run!
-      if active?
-        Null
+    def self.run!(reset: false)
+      if reset
+        lost_instance = IsolatedExecutionState.delete(active_key)
+        lost_instance&.complete!
       else
-        new.tap do |instance|
-          success = nil
-          begin
-            instance.run!
-            success = true
-          ensure
-            instance.complete! unless success
-          end
+        return Null if active?
+      end
+
+      new.tap do |instance|
+        success = nil
+        begin
+          instance.run!
+          success = true
+        ensure
+          instance.complete! unless success
         end
       end
     end
 
     # Perform the work in the supplied block as an execution.
-    def self.wrap
+    def self.wrap(source: "application.active_support")
       return yield if active?
 
       instance = run!
       begin
         yield
+      rescue => error
+        error_reporter&.report(error, handled: false, source: source)
+        raise
       ensure
         instance.complete!
       end
     end
 
-    class << self # :nodoc:
-      attr_accessor :active
+    def self.perform # :nodoc:
+      instance = new
+      instance.run
+      begin
+        yield
+      ensure
+        instance.complete
+      end
     end
 
-    def self.inherited(other) # :nodoc:
-      super
-      other.active = Concurrent::Hash.new
+    def self.error_reporter # :nodoc:
+      ActiveSupport.error_reporter
     end
 
-    self.active = Concurrent::Hash.new
+    def self.active_key # :nodoc:
+      @active_key ||= :"active_execution_wrapper_#{object_id}"
+    end
 
     def self.active? # :nodoc:
-      @active[Thread.current]
+      IsolatedExecutionState.key?(active_key)
     end
 
     def run! # :nodoc:
-      self.class.active[Thread.current] = true
+      IsolatedExecutionState[self.class.active_key] = self
+      run
+    end
+
+    def run # :nodoc:
       run_callbacks(:run)
     end
 
@@ -104,9 +134,13 @@ module ActiveSupport
     #
     # Where possible, prefer +wrap+.
     def complete!
-      run_callbacks(:complete)
+      complete
     ensure
-      self.class.active.delete Thread.current
+      IsolatedExecutionState.delete(self.class.active_key)
+    end
+
+    def complete # :nodoc:
+      run_callbacks(:complete)
     end
 
     private

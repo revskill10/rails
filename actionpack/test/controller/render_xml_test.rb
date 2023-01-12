@@ -1,6 +1,7 @@
-require 'abstract_unit'
-require 'controller/fake_models'
-require 'pathname'
+# frozen_string_literal: true
+
+require "abstract_unit"
+require "controller/fake_models"
 
 class RenderXmlTest < ActionController::TestCase
   class XmlRenderable
@@ -14,31 +15,31 @@ class RenderXmlTest < ActionController::TestCase
     protect_from_forgery
 
     def self.controller_path
-      'test'
+      "test"
     end
 
     def render_with_location
-      render :xml => "<hello/>", :location => "http://example.com", :status => 201
+      render xml: "<hello/>", location: "http://example.com", status: 201
     end
 
     def render_with_object_location
       customer = Customer.new("Some guy", 1)
-      render :xml => "<customer/>", :location => customer, :status => :created
+      render xml: "<customer/>", location: customer, status: :created
     end
 
     def render_with_to_xml
-      render :xml => XmlRenderable.new
+      render xml: XmlRenderable.new
     end
 
     def formatted_xml_erb
     end
 
     def render_xml_with_custom_content_type
-      render :xml => "<blah/>", :content_type => "application/atomsvc+xml"
+      render xml: "<blah/>", content_type: "application/atomsvc+xml"
     end
 
     def render_xml_with_custom_options
-      render :xml => XmlRenderable.new, :root => "i-am-THE-xml"
+      render xml: XmlRenderable.new, root: "i-am-THE-xml"
     end
   end
 
@@ -73,8 +74,8 @@ class RenderXmlTest < ActionController::TestCase
       set.draw do
         resources :customers
 
-        ActiveSupport::Deprecation.silence do
-          get ':controller/:action'
+        ActionDispatch.deprecator.silence do
+          get ":controller/:action"
         end
       end
 
@@ -85,16 +86,16 @@ class RenderXmlTest < ActionController::TestCase
 
   def test_should_render_formatted_xml_erb_template
     get :formatted_xml_erb, format: :xml
-    assert_equal '<test>passed formatted xml erb</test>', @response.body
+    assert_equal "<test>passed formatted xml erb</test>", @response.body
   end
 
   def test_should_render_xml_but_keep_custom_content_type
     get :render_xml_with_custom_content_type
-    assert_equal "application/atomsvc+xml", @response.content_type
+    assert_equal "application/atomsvc+xml", @response.media_type
   end
 
   def test_should_use_implicit_content_type
-    get :implicit_content_type, format: 'atom'
-    assert_equal Mime[:atom], @response.content_type
+    get :implicit_content_type, format: "atom"
+    assert_equal Mime[:atom], @response.media_type
   end
 end

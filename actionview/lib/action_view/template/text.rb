@@ -1,22 +1,20 @@
-module ActionView #:nodoc:
+# frozen_string_literal: true
+
+module ActionView # :nodoc:
   # = Action View Text Template
-  class Template
-    class Text #:nodoc:
+  class Template # :nodoc:
+    class Text # :nodoc:
       attr_accessor :type
 
-      def initialize(string, type = nil)
+      def initialize(string)
         @string = string.to_s
-        @type   = Types[type] || type if type
-        @type ||= Types[:text]
       end
 
       def identifier
-        'text template'
+        "text template"
       end
 
-      def inspect
-        'text template'
-      end
+      alias_method :inspect, :identifier
 
       def to_str
         @string
@@ -26,8 +24,8 @@ module ActionView #:nodoc:
         to_str
       end
 
-      def formats
-        [@type.respond_to?(:ref) ? @type.ref : @type.to_s]
+      def format
+        :text
       end
     end
   end

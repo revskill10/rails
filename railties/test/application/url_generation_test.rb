@@ -1,4 +1,6 @@
-require 'isolation/abstract_unit'
+# frozen_string_literal: true
+
+require "isolation/abstract_unit"
 
 module ApplicationTests
   class UrlGenerationTest < ActiveSupport::TestCase
@@ -14,10 +16,11 @@ module ApplicationTests
       require "action_view/railtie"
 
       class MyApp < Rails::Application
-        secrets.secret_key_base = "3b7cd727ee24e8444053437c36cc66c4"
         config.session_store :cookie_store, key: "_myapp_session"
         config.active_support.deprecation = :log
         config.eager_load = false
+        config.hosts << proc { true }
+        config.secret_key_base = "b3c631c314c0bbca50c1b2843150fe33"
       end
 
       Rails.application.initialize!
@@ -27,7 +30,7 @@ module ApplicationTests
 
       class ::OmgController < ::ApplicationController
         def index
-          render text: omg_path
+          render plain: omg_path
         end
       end
 
@@ -35,7 +38,7 @@ module ApplicationTests
         get "/" => "omg#index", as: :omg
       end
 
-      require 'rack/test'
+      require "rack/test"
       extend Rack::Test::Methods
 
       get "/"
@@ -47,7 +50,7 @@ module ApplicationTests
       require "action_controller/railtie"
       require "action_view/railtie"
 
-      relative_url = '/hello'
+      relative_url = "/hello"
       ENV["RAILS_RELATIVE_URL_ROOT"] = relative_url
       app = Class.new(Rails::Application)
       assert_equal relative_url, app.routes.relative_url_root

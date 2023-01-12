@@ -1,8 +1,10 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
 
 module MiddlewareTest
   class MyMiddleware
-    def initialize(app)
+    def initialize(app, kw: nil)
       @app = app
     end
 
@@ -15,13 +17,13 @@ module MiddlewareTest
   end
 
   class ExclaimerMiddleware
-    def initialize(app)
+    def initialize(app, kw: nil)
       @app = app
     end
 
     def call(env)
       result = @app.call(env)
-      result[1]["Middleware-Order"] << "!"
+      result[1]["Middleware-Order"] += "!"
       result
     end
   end
@@ -44,8 +46,8 @@ module MiddlewareTest
     use BlockMiddleware do |config|
       config.configurable_message = "Configured by block."
     end
-    use MyMiddleware
-    middleware.insert_before MyMiddleware, ExclaimerMiddleware
+    use MyMiddleware, kw: 1
+    middleware.insert_before MyMiddleware, ExclaimerMiddleware, kw: 1
 
     def index
       self.response_body = "Hello World"
@@ -56,8 +58,8 @@ module MiddlewareTest
   end
 
   class ActionsController < ActionController::Metal
-    use MyMiddleware, :only => :show
-    middleware.insert_before MyMiddleware, ExclaimerMiddleware, :except => :index
+    use MyMiddleware, only: :show, kw: 1
+    middleware.insert_before MyMiddleware, ExclaimerMiddleware, except: :index, kw: 1
 
     def index
       self.response_body = "index"

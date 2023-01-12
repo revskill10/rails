@@ -1,11 +1,14 @@
-require 'active_support/core_ext/object/try'
-require 'active_support/core_ext/kernel/singleton_class'
-require 'thread'
+# frozen_string_literal: true
+
+require "thread"
+require "delegate"
 
 module ActionView
   # = Action View Template
   class Template
     extend ActiveSupport::Autoload
+
+    STRICT_LOCALS_REGEX = /\#\s+locals:\s+\((.*)\)/
 
     # === Encodings in ActionView::Template
     #
@@ -65,8 +68,7 @@ module ActionView
     # If you want to provide an alternate mechanism for
     # specifying encodings (like ERB does via <%# encoding: ... %>),
     # you may indicate that you will handle encodings yourself
-    # by implementing <tt>self.handles_encoding?</tt>
-    # on your handler.
+    # by implementing <tt>handles_encoding?</tt> on your handler.
     #
     # If you do, Rails will not try to encode the String
     # into the default_internal, passing you the unaltered
@@ -102,46 +104,68 @@ module ActionView
 
     eager_autoload do
       autoload :Error
+      autoload :RawFile
+      autoload :Renderable
       autoload :Handlers
       autoload :HTML
+      autoload :Inline
+      autoload :Sources
       autoload :Text
       autoload :Types
     end
 
     extend Template::Handlers
 
-    attr_accessor :locals, :formats, :variants, :virtual_path
+    singleton_class.attr_accessor :frozen_string_literal
+    @frozen_string_literal = false
 
-    attr_reader :source, :identifier, :handler, :original_encoding, :updated_at
+    attr_reader :identifier, :handler
+    attr_reader :variable, :format, :variant, :virtual_path
 
-    # This finalizer is needed (and exactly with a proc inside another proc)
-    # otherwise templates leak in development.
-    Finalizer = proc do |method_name, mod| # :nodoc:
-      proc do
-        mod.module_eval do
-          remove_possible_method method_name
-        end
-      end
-    end
+    NONE = Object.new
 
-    def initialize(source, identifier, handler, details)
-      format = details[:format] || (handler.default_format if handler.respond_to?(:default_format))
-
-      @source            = source
+    def initialize(source, identifier, handler, locals:, format: nil, variant: nil, virtual_path: nil)
+      @source            = source.dup
       @identifier        = identifier
       @handler           = handler
       @compiled          = false
-      @original_encoding = nil
-      @locals            = details[:locals] || []
-      @virtual_path      = details[:virtual_path]
-      @updated_at        = details[:updated_at] || Time.now
-      @formats           = Array(format).map { |f| f.respond_to?(:ref) ? f.ref : f  }
-      @variants          = [details[:variant]]
+      @locals            = locals
+      @virtual_path      = virtual_path
+
+      @variable = if @virtual_path
+        base = @virtual_path.end_with?("/") ? "" : ::File.basename(@virtual_path)
+        base =~ /\A_?(.*?)(?:\.\w+)*\z/
+        $1.to_sym
+      end
+
+      @format            = format
+      @variant           = variant
       @compile_mutex     = Mutex.new
+      @strict_locals     = NONE
+    end
+
+    # The locals this template has been or will be compiled for, or nil if this
+    # is a strict locals template.
+    def locals
+      if strict_locals?
+        nil
+      else
+        @locals
+      end
+    end
+
+    # Translate an error location returned by ErrorHighlight to the correct
+    # source location inside the template.
+    def translate_location(backtrace_location, spot)
+      if handler.respond_to?(:translate_location)
+        handler.translate_location(spot, backtrace_location, source)
+      else
+        spot
+      end
     end
 
     # Returns whether the underlying handler supports streaming. If so,
-    # a streaming buffer *may* be passed when it start rendering.
+    # a streaming buffer *may* be passed when it starts rendering.
     def supports_streaming?
       handler.respond_to?(:supports_streaming?) && handler.supports_streaming?
     end
@@ -152,41 +176,38 @@ module ActionView
     # This method is instrumented as "!render_template.action_view". Notice that
     # we use a bang in this instrumentation because you don't want to
     # consume this in production. This is only slow if it's being listened to.
-    def render(view, locals, buffer=nil, &block)
-      instrument("!render_template".freeze) do
+    def render(view, locals, buffer = nil, add_to_stack: true, &block)
+      instrument_render_template do
         compile!(view)
-        view.send(method_name, locals, buffer, &block)
+        if buffer
+          view._run(method_name, self, locals, buffer, add_to_stack: add_to_stack, has_strict_locals: strict_locals?, &block)
+          nil
+        else
+          view._run(method_name, self, locals, OutputBuffer.new, add_to_stack: add_to_stack, has_strict_locals: strict_locals?, &block)&.to_s
+        end
       end
     rescue => e
       handle_render_error(view, e)
     end
 
     def type
-      @type ||= Types[@formats.first] if @formats.first
+      @type ||= Types[format]
     end
 
-    # Receives a view object and return a template similar to self by using @virtual_path.
-    #
-    # This method is useful if you have a template object but it does not contain its source
-    # anymore since it was already compiled. In such cases, all you need to do is to call
-    # refresh passing in the view object.
-    #
-    # Notice this method raises an error if the template to be refreshed does not have a
-    # virtual path set (true just for inline templates).
-    def refresh(view)
-      raise "A template needs to have a virtual path in order to be refreshed" unless @virtual_path
-      lookup  = view.lookup_context
-      pieces  = @virtual_path.split("/")
-      name    = pieces.pop
-      partial = !!name.sub!(/^_/, "")
-      lookup.disable_cache do
-        lookup.find_template(name, [ pieces.join('/') ], partial, @locals)
-      end
+    def short_identifier
+      @short_identifier ||= defined?(Rails.root) ? identifier.delete_prefix("#{Rails.root}/") : identifier
     end
 
     def inspect
-      @inspect ||= defined?(Rails.root) ? identifier.sub("#{Rails.root}/", ''.freeze) : identifier
+      "#<#{self.class.name} #{short_identifier} locals=#{locals.inspect}>"
     end
+
+    def source
+      @source.to_s
+    end
+
+    LEADING_ENCODING_REGEXP = /\A#{ENCODING_FLAG}/
+    private_constant :LEADING_ENCODING_REGEXP
 
     # This method is responsible for properly setting the encoding of the
     # source. Until this point, we assume that the source is BINARY data.
@@ -199,12 +220,14 @@ module ActionView
     # before passing the source on to the template engine, leaving a
     # blank line in its stead.
     def encode!
-      return unless source.encoding == Encoding::BINARY
+      source = self.source
+
+      return source unless source.encoding == Encoding::BINARY
 
       # Look for # encoding: *. If we find one, we'll encode the
       # String in that encoding, otherwise, we'll use the
       # default external encoding.
-      if source.sub!(/\A#{ENCODING_FLAG}/, '')
+      if source.sub!(LEADING_ENCODING_REGEXP, "")
         encoding = magic_encoding = $1
       else
         encoding = Encoding.default_external
@@ -232,11 +255,57 @@ module ActionView
       end
     end
 
-    protected
+    # This method is responsible for marking a template as having strict locals
+    # which means the template can only accept the locals defined in a magic
+    # comment. For example, if your template acceps the locals +title+ and
+    # +comment_count+, add the following to your template file:
+    #
+    #   <%# locals: (title: "Default title", comment_count: 0) %>
+    #
+    # Strict locals are useful for validating template arguments and for
+    # specifying defaults.
+    def strict_locals!
+      if @strict_locals == NONE
+        self.source.sub!(STRICT_LOCALS_REGEX, "")
+        @strict_locals = $1
 
+        return if @strict_locals.nil? # Magic comment not found
+
+        @strict_locals = "**nil" if @strict_locals.blank?
+      end
+
+      @strict_locals
+    end
+
+    # Returns whether a template is using strict locals.
+    def strict_locals?
+      strict_locals!
+    end
+
+    # Exceptions are marshalled when using the parallel test runner with DRb, so we need
+    # to ensure that references to the template object can be marshalled as well. This means forgoing
+    # the marshalling of the compiler mutex and instantiating that again on unmarshalling.
+    def marshal_dump # :nodoc:
+      [ @source, @identifier, @handler, @compiled, @locals, @virtual_path, @format, @variant ]
+    end
+
+    def marshal_load(array) # :nodoc:
+      @source, @identifier, @handler, @compiled, @locals, @virtual_path, @format, @variant = *array
+      @compile_mutex = Mutex.new
+    end
+
+    def method_name # :nodoc:
+      @method_name ||= begin
+        m = +"_#{identifier_method_name}__#{@identifier.hash}_#{__id__}"
+        m.tr!("-", "_")
+        m
+      end
+    end
+
+    private
       # Compile a template. This method ensures a template is compiled
       # just once and removes the source after it is compiled.
-      def compile!(view) #:nodoc:
+      def compile!(view)
         return if @compiled
 
         # Templates can be used concurrently in threaded environments
@@ -248,20 +317,57 @@ module ActionView
           # re-compilation
           return if @compiled
 
-          if view.is_a?(ActionView::CompiledTemplates)
-            mod = ActionView::CompiledTemplates
-          else
-            mod = view.singleton_class
-          end
+          mod = view.compiled_method_container
 
           instrument("!compile_template") do
             compile(mod)
           end
 
-          # Just discard the source if we have a virtual path. This
-          # means we can get the template back.
-          @source = nil if @virtual_path
           @compiled = true
+        end
+      end
+
+      # This method compiles the source of the template. The compilation of templates
+      # involves setting strict_locals! if applicable, encoding the template, and setting
+      # frozen string literal.
+      def compiled_source
+        set_strict_locals = strict_locals!
+        source = encode!
+        code = @handler.call(self, source)
+
+        method_arguments =
+          if set_strict_locals
+            "output_buffer, #{set_strict_locals}"
+          else
+            "local_assigns, output_buffer"
+          end
+
+        # Make sure that the resulting String to be eval'd is in the
+        # encoding of the code
+        source = +<<-end_src
+          def #{method_name}(#{method_arguments})
+            @virtual_path = #{@virtual_path.inspect};#{locals_code};#{code}
+          end
+        end_src
+
+        # Make sure the source is in the encoding of the returned code
+        source.force_encoding(code.encoding)
+
+        # In case we get back a String from a handler that is not in
+        # BINARY or the default_internal, encode it to the default_internal
+        source.encode!
+
+        # Now, validate that the source we got back from the template
+        # handler is valid in the default_internal. This is for handlers
+        # that handle encoding but screw up
+        unless source.valid_encoding?
+          raise WrongEncodingError.new(source, Encoding.default_internal)
+        end
+
+        if Template.frozen_string_literal
+          "# frozen_string_literal: true\n#{source}"
+        else
+          source
         end
       end
 
@@ -277,78 +383,89 @@ module ActionView
       # encode the source into <tt>Encoding.default_internal</tt>.
       # In general, this means that templates will be UTF-8 inside of Rails,
       # regardless of the original source encoding.
-      def compile(mod) #:nodoc:
-        encode!
-        method_name = self.method_name
-        code = @handler.call(self)
-
-        # Make sure that the resulting String to be eval'd is in the
-        # encoding of the code
-        source = <<-end_src
-          def #{method_name}(local_assigns, output_buffer)
-            _old_virtual_path, @virtual_path = @virtual_path, #{@virtual_path.inspect};_old_output_buffer = @output_buffer;#{locals_code};#{code}
-          ensure
-            @virtual_path, @output_buffer = _old_virtual_path, _old_output_buffer
-          end
-        end_src
-
-        # Make sure the source is in the encoding of the returned code
-        source.force_encoding(code.encoding)
-
-        # In case we get back a String from a handler that is not in
-        # BINARY or the default_internal, encode it to the default_internal
-        source.encode!
-
-        # Now, validate that the source we got back from the template
-        # handler is valid in the default_internal. This is for handlers
-        # that handle encoding but screw up
-        unless source.valid_encoding?
-          raise WrongEncodingError.new(@source, Encoding.default_internal)
+      def compile(mod)
+        begin
+          mod.module_eval(compiled_source, identifier, offset)
+        rescue SyntaxError
+          # Account for when code in the template is not syntactically valid; e.g. if we're using
+          # ERB and the user writes <%= foo( %>, attempting to call a helper `foo` and interpolate
+          # the result into the template, but missing an end parenthesis.
+          raise SyntaxErrorInTemplate.new(self, encode!)
         end
 
-        mod.module_eval(source, identifier, 0)
-        ObjectSpace.define_finalizer(self, Finalizer[method_name, mod])
+        return unless strict_locals?
+
+        # Check compiled method parameters to ensure that only kwargs
+        # were provided as strict locals, preventing `locals: (foo, *foo)` etc
+        # and allowing `locals: (foo:)`.
+
+        non_kwarg_parameters =
+          (mod.instance_method(method_name).parameters - [[:req, :output_buffer]]).
+            select { |parameter| ![:keyreq, :key, :keyrest, :nokey].include?(parameter[0]) }
+
+        return unless non_kwarg_parameters.any?
+
+        mod.undef_method(method_name)
+
+        raise ArgumentError.new(
+          "#{non_kwarg_parameters.map { |_, name| "`#{name}`" }.to_sentence} set as non-keyword " \
+          "#{'argument'.pluralize(non_kwarg_parameters.length)} for #{short_identifier}. " \
+          "Locals can only be set as keyword arguments."
+        )
       end
 
-      def handle_render_error(view, e) #:nodoc:
+      def offset
+        if Template.frozen_string_literal
+          -1
+        else
+          0
+        end
+      end
+
+      def handle_render_error(view, e)
         if e.is_a?(Template::Error)
           e.sub_template_of(self)
           raise e
         else
-          template = self
-          unless template.source
-            template = refresh(view)
-            template.encode!
-          end
-          raise Template::Error.new(template)
+          raise Template::Error.new(self)
         end
       end
 
-      def locals_code #:nodoc:
-        # Double assign to suppress the dreaded 'assigned but unused variable' warning
-        @locals.each_with_object('') { |key, code| code << "#{key} = #{key} = local_assigns[:#{key}];" }
-      end
+      def locals_code
+        return "" if strict_locals?
 
-      def method_name #:nodoc:
-        @method_name ||= begin
-          m = "_#{identifier_method_name}__#{@identifier.hash}_#{__id__}"
-          m.tr!('-'.freeze, '_'.freeze)
-          m
-        end
-      end
-
-      def identifier_method_name #:nodoc:
-        inspect.tr('^a-z_'.freeze, '_'.freeze)
-      end
-
-      def instrument(action, &block)
-        payload = { virtual_path: @virtual_path, identifier: @identifier }
-        case action
-        when "!render_template".freeze
-          ActiveSupport::Notifications.instrument("!render_template.action_view".freeze, payload, &block)
+        # Only locals with valid variable names get set directly. Others will
+        # still be available in local_assigns.
+        locals = @locals - Module::RUBY_RESERVED_KEYWORDS
+        deprecated_locals = locals.grep(/\A@+/)
+        if deprecated_locals.any?
+          ActionView.deprecator.warn(<<~MSG)
+            Passing instance variables to `render` is deprecated.
+            In Rails 7.1, #{deprecated_locals.to_sentence} will be ignored.
+          MSG
+          locals = locals.grep(/\A@?(?![A-Z0-9])(?:[[:alnum:]_]|[^\0-\177])+\z/)
         else
-          ActiveSupport::Notifications.instrument("#{action}.action_view".freeze, payload, &block)
+          locals = locals.grep(/\A(?![A-Z0-9])(?:[[:alnum:]_]|[^\0-\177])+\z/)
         end
+
+        # Assign for the same variable is to suppress unused variable warning
+        locals.each_with_object(+"") { |key, code| code << "#{key} = local_assigns[:#{key}]; #{key} = #{key};" }
+      end
+
+      def identifier_method_name
+        short_identifier.tr("^a-z_", "_")
+      end
+
+      def instrument(action, &block) # :doc:
+        ActiveSupport::Notifications.instrument("#{action}.action_view", instrument_payload, &block)
+      end
+
+      def instrument_render_template(&block)
+        ActiveSupport::Notifications.instrument("!render_template.action_view", instrument_payload, &block)
+      end
+
+      def instrument_payload
+        { virtual_path: @virtual_path, identifier: @identifier }
       end
   end
 end

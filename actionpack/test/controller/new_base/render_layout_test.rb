@@ -1,4 +1,7 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
+require "test_renderable"
 
 module ControllerLayouts
   class ImplicitController < ::ApplicationController
@@ -10,15 +13,19 @@ module ControllerLayouts
     )]
 
     def index
-      render :template => "basic"
+      render template: "basic"
     end
 
     def override
-      render :template => "basic", :layout => "override"
+      render template: "basic", layout: "override"
+    end
+
+    def override_renderable
+      render TestRenderable.new, layout: "override"
     end
 
     def layout_false
-      render :layout => false
+      render layout: false
     end
 
     def builder_override
@@ -32,7 +39,11 @@ module ControllerLayouts
     )]
 
     def index
-      render :template => "basic"
+      render template: "basic"
+    end
+
+    def renderable
+      render TestRenderable.new
     end
   end
 
@@ -51,11 +62,24 @@ module ControllerLayouts
       assert_status 200
     end
 
+    test "rendering a renderable object, using the implicit layout" do
+      get "/controller_layouts/implicit_name/renderable"
+
+      assert_body "Implicit Hello, World! Layout"
+      assert_status 200
+    end
+
+    test "rendering a renderable object, using the override layout" do
+      get "/controller_layouts/implicit/override_renderable"
+
+      assert_body "Override! Hello, World!"
+      assert_status 200
+    end
+
     test "overriding an implicit layout with render :layout option" do
       get "/controller_layouts/implicit/override"
       assert_body "Override! Hello world!"
     end
-
   end
 
   class LayoutOptionsTest < Rack::TestCase
@@ -76,7 +100,7 @@ module ControllerLayouts
     )]
 
     def explicit
-      render :layout => "application"
+      render layout: "application"
     end
   end
 

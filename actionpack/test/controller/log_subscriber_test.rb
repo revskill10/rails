@@ -1,10 +1,12 @@
+# frozen_string_literal: true
+
 require "abstract_unit"
 require "active_support/log_subscriber/test_helper"
 require "action_controller/log_subscriber"
 
 module Another
   class LogSubscribersController < ActionController::Base
-    wrap_parameters :person, :include => :name, :format => :json
+    wrap_parameters :person, include: :name, format: :json
 
     class SpecialException < Exception
     end
@@ -31,7 +33,7 @@ module Another
     end
 
     def data_sender
-      send_data "cool data", :filename => "file.txt"
+      send_data "cool data", filename: "file.txt"
     end
 
     def file_sender
@@ -39,27 +41,31 @@ module Another
     end
 
     def with_fragment_cache
-      render :inline => "<%= cache('foo'){ 'bar' } %>"
+      render inline: "<%= cache('foo'){ 'bar' } %>"
     end
 
     def with_fragment_cache_and_percent_in_key
-      render :inline => "<%= cache('foo%bar'){ 'Contains % sign in key' } %>"
+      render inline: "<%= cache('foo%bar'){ 'Contains % sign in key' } %>"
     end
 
     def with_fragment_cache_if_with_true_condition
-      render :inline => "<%= cache_if(true, 'foo') { 'bar' } %>"
+      render inline: "<%= cache_if(true, 'foo') { 'bar' } %>"
     end
 
     def with_fragment_cache_if_with_false_condition
-      render :inline => "<%= cache_if(false, 'foo') { 'bar' } %>"
+      render inline: "<%= cache_if(false, 'foo') { 'bar' } %>"
     end
 
     def with_fragment_cache_unless_with_false_condition
-      render :inline => "<%= cache_unless(false, 'foo') { 'bar' } %>"
+      render inline: "<%= cache_unless(false, 'foo') { 'bar' } %>"
     end
 
     def with_fragment_cache_unless_with_true_condition
-      render :inline => "<%= cache_unless(true, 'foo') { 'bar' } %>"
+      render inline: "<%= cache_unless(true, 'foo') { 'bar' } %>"
+    end
+
+    def with_throw
+      throw :halt
     end
 
     def with_exception
@@ -80,9 +86,7 @@ module Another
       @last_payload = payload
     end
 
-    def last_payload
-      @last_payload
-    end
+    attr_reader :last_payload
   end
 end
 
@@ -92,11 +96,13 @@ class ACLogSubscriberTest < ActionController::TestCase
 
   def setup
     super
+    ActionController::Base.enable_fragment_cache_logging = true
 
     @old_logger = ActionController::Base.logger
 
-    @cache_path = File.join Dir.tmpdir, Dir::Tmpname.make_tmpname('tmp', 'cache')
+    @cache_path = Dir.mktmpdir(%w[tmp cache])
     @controller.cache_store = :file_store, @cache_path
+    @controller.config.perform_caching = true
     ActionController::LogSubscriber.attach_to :action_controller
   end
 
@@ -105,6 +111,7 @@ class ACLogSubscriberTest < ActionController::TestCase
     ActiveSupport::LogSubscriber.log_subscribers.clear
     FileUtils.rm_rf(@cache_path)
     ActionController::Base.logger = @old_logger
+    ActionController::Base.enable_fragment_cache_logging = true
   end
 
   def set_logger(logger)
@@ -116,6 +123,20 @@ class ACLogSubscriberTest < ActionController::TestCase
     wait
     assert_equal 2, logs.size
     assert_equal "Processing by Another::LogSubscribersController#show as HTML", logs.first
+  end
+
+  def test_start_processing_as_json
+    get :show, format: "json"
+    wait
+    assert_equal 2, logs.size
+    assert_equal "Processing by Another::LogSubscribersController#show as JSON", logs.first
+  end
+
+  def test_start_processing_as_non_exten
+    get :show, format: "noext"
+    wait
+    assert_equal 2, logs.size
+    assert_equal "Processing by Another::LogSubscribersController#show as */*", logs.first
   end
 
   def test_halted_callback
@@ -136,11 +157,11 @@ class ACLogSubscriberTest < ActionController::TestCase
   def test_process_action_without_parameters
     get :show
     wait
-    assert_nil logs.detect {|l| l =~ /Parameters/ }
+    assert_nil logs.detect { |l| /Parameters/.match?(l) }
   end
 
   def test_process_action_with_parameters
-    get :show, params: { id: '10' }
+    get :show, params: { id: "10" }
     wait
 
     assert_equal 3, logs.size
@@ -148,8 +169,8 @@ class ACLogSubscriberTest < ActionController::TestCase
   end
 
   def test_multiple_process_with_parameters
-    get :show, params: { id: '10' }
-    get :show, params: { id: '20' }
+    get :show, params: { id: "10" }
+    get :show, params: { id: "20" }
 
     wait
 
@@ -159,8 +180,8 @@ class ACLogSubscriberTest < ActionController::TestCase
   end
 
   def test_process_action_with_wrapped_parameters
-    @request.env['CONTENT_TYPE'] = 'application/json'
-    post :show, params: { id: '10', name: 'jose' }
+    @request.env["CONTENT_TYPE"] = "application/json"
+    post :show, params: { id: "10", name: "jose" }
     wait
 
     assert_equal 3, logs.size
@@ -171,6 +192,14 @@ class ACLogSubscriberTest < ActionController::TestCase
     get :show
     wait
     assert_match(/Completed 200 OK in \d+ms/, logs[1])
+  end
+
+  def test_process_action_with_throw
+    catch(:halt) do
+      get :with_throw
+      wait
+    end
+    assert_match(/Completed   in \d+ms/, logs[1])
   end
 
   def test_append_info_to_payload_is_called_even_with_exception
@@ -186,14 +215,14 @@ class ACLogSubscriberTest < ActionController::TestCase
   def test_process_action_headers
     get :show
     wait
-    assert_equal "Rails Testing", @controller.last_payload[:headers]['User-Agent']
+    assert_equal "Rails Testing", @controller.last_payload[:headers]["User-Agent"]
   end
 
   def test_process_action_with_filter_parameters
     @request.env["action_dispatch.parameter_filter"] = [:lifo, :amount]
 
     get :show, params: {
-      lifo: 'Pratik', amount: '420', step: '1'
+      lifo: "Pratik", amount: "420", step: "1"
     }
     wait
 
@@ -209,10 +238,11 @@ class ACLogSubscriberTest < ActionController::TestCase
 
     assert_equal 3, logs.size
     assert_equal "Redirected to http://foo.bar/", logs[1]
+    assert_match(/Completed 302/, logs.last)
   end
 
   def test_filter_redirect_url_by_string
-    @request.env['action_dispatch.redirect_filter'] = ['secret']
+    @request.env["action_dispatch.redirect_filter"] = ["secret"]
     get :filterable_redirector
     wait
 
@@ -221,7 +251,7 @@ class ACLogSubscriberTest < ActionController::TestCase
   end
 
   def test_filter_redirect_url_by_regexp
-    @request.env['action_dispatch.redirect_filter'] = [/secret\.foo.+/]
+    @request.env["action_dispatch.redirect_filter"] = [/secret\.foo.+/]
     get :filterable_redirector
     wait
 
@@ -247,75 +277,68 @@ class ACLogSubscriberTest < ActionController::TestCase
   end
 
   def test_with_fragment_cache
-    @controller.config.perform_caching = true
     get :with_fragment_cache
     wait
 
     assert_equal 4, logs.size
     assert_match(/Read fragment views\/foo/, logs[1])
     assert_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
+  end
+
+  def test_with_fragment_cache_when_log_disabled
+    ActionController::Base.enable_fragment_cache_logging = false
+    get :with_fragment_cache
+    wait
+
+    assert_equal 2, logs.size
+    assert_equal "Processing by Another::LogSubscribersController#with_fragment_cache as HTML", logs[0]
+    assert_match(/Completed 200 OK in \d+ms/, logs[1])
+    ActionController::Base.enable_fragment_cache_logging = true
   end
 
   def test_with_fragment_cache_if_with_true
-    @controller.config.perform_caching = true
     get :with_fragment_cache_if_with_true_condition
     wait
 
     assert_equal 4, logs.size
     assert_match(/Read fragment views\/foo/, logs[1])
     assert_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
   end
 
   def test_with_fragment_cache_if_with_false
-    @controller.config.perform_caching = true
     get :with_fragment_cache_if_with_false_condition
     wait
 
     assert_equal 2, logs.size
     assert_no_match(/Read fragment views\/foo/, logs[1])
     assert_no_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
   end
 
   def test_with_fragment_cache_unless_with_true
-    @controller.config.perform_caching = true
     get :with_fragment_cache_unless_with_true_condition
     wait
 
     assert_equal 2, logs.size
     assert_no_match(/Read fragment views\/foo/, logs[1])
     assert_no_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
   end
 
   def test_with_fragment_cache_unless_with_false
-    @controller.config.perform_caching = true
     get :with_fragment_cache_unless_with_false_condition
     wait
 
     assert_equal 4, logs.size
     assert_match(/Read fragment views\/foo/, logs[1])
     assert_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
   end
 
   def test_with_fragment_cache_and_percent_in_key
-    @controller.config.perform_caching = true
     get :with_fragment_cache_and_percent_in_key
     wait
 
     assert_equal 4, logs.size
     assert_match(/Read fragment views\/foo/, logs[1])
     assert_match(/Write fragment views\/foo/, logs[2])
-  ensure
-    @controller.config.perform_caching = true
   end
 
   def test_process_action_with_exception_includes_http_status_code

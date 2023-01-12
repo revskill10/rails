@@ -1,18 +1,19 @@
-require 'action_dispatch/routing/polymorphic_routes'
+# frozen_string_literal: true
+
+require "action_dispatch/routing/polymorphic_routes"
 
 module ActionView
   module RoutingUrlFor
-
     # Returns the URL for the set of +options+ provided. This takes the
     # same options as +url_for+ in Action Controller (see the
-    # documentation for <tt>ActionController::Base#url_for</tt>). Note that by default
-    # <tt>:only_path</tt> is <tt>true</tt> so you'll get the relative "/controller/action"
-    # instead of the fully qualified URL like "http://example.com/controller/action".
+    # documentation for ActionDispatch::Routing::UrlFor#url_for). Note that by default
+    # <tt>:only_path</tt> is <tt>true</tt> so you'll get the relative <tt>"/controller/action"</tt>
+    # instead of the fully qualified URL like <tt>"http://example.com/controller/action"</tt>.
     #
     # ==== Options
     # * <tt>:anchor</tt> - Specifies the anchor name to be appended to the path.
     # * <tt>:only_path</tt> - If true, returns the relative URL (omitting the protocol, host name, and port) (<tt>true</tt> by default unless <tt>:host</tt> is specified).
-    # * <tt>:trailing_slash</tt> - If true, adds a trailing slash, as in "/archive/2005/". Note that this
+    # * <tt>:trailing_slash</tt> - If true, adds a trailing slash, as in <tt>"/archive/2005/"</tt>. Note that this
     #   is currently not recommended since it breaks caching.
     # * <tt>:host</tt> - Overrides the default (current) host if provided.
     # * <tt>:protocol</tt> - Overrides the default (current) protocol if provided.
@@ -45,6 +46,9 @@ module ActionView
     #
     #   <%= url_for(action: 'jump', anchor: 'tax&ship') %>
     #   # => /testing/jump/#tax&ship
+    #
+    #   <%= url_for(Workshop) %>
+    #   # => /workshops
     #
     #   <%= url_for(Workshop.new) %>
     #   # relies on Workshop answering a persisted? call (and in this case returning false)
@@ -83,29 +87,28 @@ module ActionView
         super(only_path: _generate_paths_by_default)
       when Hash
         options = options.symbolize_keys
-        unless options.key?(:only_path)
-          options[:only_path] = only_path?(options[:host])
-        end
+        ensure_only_path_option(options)
 
         super(options)
       when ActionController::Parameters
-        unless options.key?(:only_path)
-          options[:only_path] = only_path?(options[:host])
-        end
+        ensure_only_path_option(options)
 
         super(options)
       when :back
         _back_url
       when Array
         components = options.dup
-        if _generate_paths_by_default
-          polymorphic_path(components, components.extract_options!)
+        options = components.extract_options!
+        ensure_only_path_option(options)
+
+        if options[:only_path]
+          polymorphic_path(components, options)
         else
-          polymorphic_url(components, components.extract_options!)
+          polymorphic_url(components, options)
         end
       else
         method = _generate_paths_by_default ? :path : :url
-        builder = ActionDispatch::Routing::PolymorphicRoutes::HelperMethodBuilder.send(method)
+        builder = ActionDispatch::Routing::PolymorphicRoutes::HelperMethodBuilder.public_send(method)
 
         case options
         when Symbol
@@ -118,30 +121,29 @@ module ActionView
       end
     end
 
-    def url_options #:nodoc:
+    def url_options # :nodoc:
       return super unless controller.respond_to?(:url_options)
       controller.url_options
     end
 
-    def _routes_context #:nodoc:
-      controller
-    end
-    protected :_routes_context
-
-    def optimize_routes_generation? #:nodoc:
-      controller.respond_to?(:optimize_routes_generation?, true) ?
-        controller.optimize_routes_generation? : super
-    end
-    protected :optimize_routes_generation?
-
     private
+      def _routes_context
+        controller
+      end
+
+      def optimize_routes_generation?
+        controller.respond_to?(:optimize_routes_generation?, true) ?
+          controller.optimize_routes_generation? : super
+      end
 
       def _generate_paths_by_default
         true
       end
 
-      def only_path?(host)
-        _generate_paths_by_default unless host
+      def ensure_only_path_option(options)
+        unless options.key?(:only_path)
+          options[:only_path] = _generate_paths_by_default unless options[:host]
+        end
       end
   end
 end

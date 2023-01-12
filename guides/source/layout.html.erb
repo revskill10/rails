@@ -1,38 +1,41 @@
 <!DOCTYPE html>
-
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<html lang="en">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-
-<title><%= yield(:page_title) || 'Ruby on Rails Guides' %></title>
-<link rel="stylesheet" type="text/css" href="stylesheets/style.css" />
-<link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
-
-<link rel="stylesheet" type="text/css" href="stylesheets/syntaxhighlighter/shCore.css" />
-<link rel="stylesheet" type="text/css" href="stylesheets/syntaxhighlighter/shThemeRailsGuides.css" />
-
-<link rel="stylesheet" type="text/css" href="stylesheets/fixes.css" />
-
-<link href="images/favicon.ico" rel="shortcut icon" type="image/x-icon" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= yield(:page_title) %></title>
+  <link rel="stylesheet" type="text/css" href="stylesheets/style.css" data-turbo-track="reload">
+  <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+  <link rel="stylesheet" type="text/css" href="stylesheets/highlight.css" data-turbo-track="reload">
+  <link href="images/favicon.ico" rel="icon" type="image/x-icon" />
+  <script src="javascripts/turbo.js" data-turbo-track="reload"></script>
+  <script src="javascripts/clipboard.js" data-turbo-track="reload"></script>
+  <script src="javascripts/guides.js" data-turbo-track="reload"></script>
+  <meta property="og:title" content="<%= yield(:page_title) %>" />
+  <meta name="description" content="<%= yield(:description) %>" />
+  <meta property="og:description" content="<%= yield(:description) %>" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:site_name" content="Ruby on Rails Guides" />
+  <meta property="og:image" content="https://avatars.githubusercontent.com/u/4223" />
+  <meta property="og:type" content="website" />
 </head>
-<body class="guide">
-  <% if @edge %>
+<body dir="<%= @direction %>" class="guide">
+  <% if badge_version = @edge ? "edge" : @version %>
   <div>
-    <img src="images/edge_badge.png" alt="edge-badge" id="edge-badge" />
+    <div id="version-badge"><%= badge_version %></div>
   </div>
   <% end %>
   <div id="topNav">
     <div class="wrapper">
-      <strong class="more-info-label">More at <a href="http://rubyonrails.org/">rubyonrails.org:</a> </strong>
+      <strong class="more-info-label">More at <a href="https://rubyonrails.org/">rubyonrails.org:</a> </strong>
       <span class="red-button more-info-button">
         More Ruby on Rails
       </span>
       <ul class="more-info-links s-hidden">
-        <li class="more-info"><a href="http://weblog.rubyonrails.org/">Blog</a></li>
-        <li class="more-info"><a href="http://guides.rubyonrails.org/">Guides</a></li>
-        <li class="more-info"><a href="http://api.rubyonrails.org/">API</a></li>
-        <li class="more-info"><a href="http://stackoverflow.com/questions/tagged/ruby-on-rails">Ask for help</a></li>
+        <li class="more-info"><a href="https://rubyonrails.org/blog">Blog</a></li>
+        <li class="more-info"><a href="https://guides.rubyonrails.org/">Guides</a></li>
+        <li class="more-info"><a href="https://api.rubyonrails.org/">API</a></li>
+        <li class="more-info"><a href="https://discuss.rubyonrails.org/">Forum</a></li>
         <li class="more-info"><a href="https://github.com/rails/rails">Contribute on GitHub</a></li>
       </ul>
     </div>
@@ -46,20 +49,19 @@
           <a href="index.html" id="guidesMenu" class="guides-index-item nav-item">Guides Index</a>
           <div id="guides" class="clearfix" style="display: none;">
             <hr />
-            <% ['L', 'R'].each do |position| %>
-              <dl class="<%= position %>">
-              <% docs_for_menu(position).each do |section| %>
-                <dt><%= section['name'] %></dt>
-                <% finished_documents(section['documents']).each do |document| %>
-                <dd><a href="<%= document['url'] %>"><%= document['name'] %></a></dd>
-                <% end %>
+            <dl class="guides-section-container">
+              <% documents_by_section.each do |section| %>
+                <div class="guides-section">
+                  <dt><%= section['name'] %></dt>
+                  <% finished_documents(section['documents']).each do |document| %>
+                  <dd><a href="<%= document['url'] %>"><%= document['name'] %></a></dd>
+                  <% end %>
+                </div>
               <% end %>
-              </dl>
-            <% end %>
+            </dl>
           </div>
         </li>
         <li><a class="nav-item" href="contributing_to_ruby_on_rails.html">Contribute</a></li>
-        <li><a class="nav-item" href="credits.html">Credits</a></li>
         <li class="guides-index guides-index-small">
           <select class="guides-index-item nav-item">
             <option value="index.html">Guides Index</option>
@@ -88,7 +90,7 @@
   <div id="container">
     <div class="wrapper">
       <div id="mainCol">
-        <%= yield.html_safe %>
+        <%= yield %>
 
         <h3>Feedback</h3>
         <p>
@@ -96,13 +98,13 @@
         </p>
         <p>
           Please contribute if you see any typos or factual errors.
-          To get started, you can read our <%= link_to 'documentation contributions', 'http://edgeguides.rubyonrails.org/contributing_to_ruby_on_rails.html#contributing-to-the-rails-documentation' %> section.
+          To get started, you can read our <%= link_to 'documentation contributions', 'https://edgeguides.rubyonrails.org/contributing_to_ruby_on_rails.html#contributing-to-the-rails-documentation' %> section.
         </p>
         <p>
-          You may also find incomplete content, or stuff that is not up to date.
-          Please do add any missing documentation for master. Make sure to check
-          <%= link_to 'Edge Guides','http://edgeguides.rubyonrails.org' %> first to verify
-          if the issues are already fixed or not on the master branch.
+          You may also find incomplete content or stuff that is not up to date.
+          Please do add any missing documentation for main. Make sure to check
+          <%= link_to 'Edge Guides', 'https://edgeguides.rubyonrails.org' %> first to verify
+          if the issues are already fixed or not on the main branch.
           Check the <%= link_to 'Ruby on Rails Guides Guidelines', 'ruby_on_rails_guides_guidelines.html' %>
           for style and conventions.
         </p>
@@ -111,7 +113,7 @@
           <%= link_to 'open an issue', 'https://github.com/rails/rails/issues' %>.
         </p>
         <p>And last but not least, any kind of discussion regarding Ruby on Rails
-          documentation is very welcome in the <%= link_to 'rubyonrails-docs mailing list', 'https://groups.google.com/forum/#!forum/rubyonrails-docs' %>.
+          documentation is very welcome on the <%= link_to 'official Ruby on Rails Forum', 'https://discuss.rubyonrails.org/c/rubyonrails-docs' %>.
         </p>
       </div>
     </div>
@@ -123,16 +125,5 @@
       <%= render 'license' %>
     </div>
   </div>
-
-  <script type="text/javascript" src="javascripts/jquery.min.js"></script>
-  <script type="text/javascript" src="javascripts/responsive-tables.js"></script>
-  <script type="text/javascript" src="javascripts/guides.js"></script>
-  <script type="text/javascript" src="javascripts/syntaxhighlighter.js"></script>
-  <script type="text/javascript">
-    syntaxhighlighterConfig = {
-      autoLinks: false,
-    };
-    $(guidesIndex.bind);
-  </script>
 </body>
 </html>

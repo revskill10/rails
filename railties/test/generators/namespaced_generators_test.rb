@@ -1,8 +1,11 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/rails/controller/controller_generator'
-require 'rails/generators/rails/model/model_generator'
-require 'rails/generators/mailer/mailer_generator'
-require 'rails/generators/rails/scaffold/scaffold_generator'
+# frozen_string_literal: true
+
+require "generators/generators_test_helper"
+require "rails/generators/rails/controller/controller_generator"
+require "rails/generators/rails/model/model_generator"
+require "rails/generators/mailer/mailer_generator"
+require "rails/generators/rails/scaffold/scaffold_generator"
+require "rails/generators/rails/application_record/application_record_generator"
 
 class NamespacedGeneratorTestCase < Rails::Generators::TestCase
   include GeneratorsTestHelper
@@ -22,7 +25,6 @@ class NamespacedControllerGeneratorTest < NamespacedGeneratorTestCase
   def test_namespaced_controller_skeleton_is_created
     run_generator
     assert_file "app/controllers/test_app/account_controller.rb",
-                /require_dependency "test_app\/application_controller"/,
                 /module TestApp/,
                 /  class AccountController < ApplicationController/
 
@@ -39,9 +41,7 @@ class NamespacedControllerGeneratorTest < NamespacedGeneratorTestCase
 
   def test_namespaced_controller_with_additional_namespace
     run_generator ["admin/account"]
-    assert_file "app/controllers/test_app/admin/account_controller.rb", /module TestApp/, /  class Admin::AccountController < ApplicationController/ do |contents|
-      assert_match %r(require_dependency "test_app/application_controller"), contents
-    end
+    assert_file "app/controllers/test_app/admin/account_controller.rb", /module TestApp/, /  class Admin::AccountController < ApplicationController/
   end
 
   def test_helper_is_also_namespaced
@@ -98,7 +98,7 @@ class NamespacedModelGeneratorTest < NamespacedGeneratorTestCase
     run_generator ["admin/account"]
     assert_file "app/models/test_app/admin.rb", /module TestApp/, /module Admin/
     assert_file "app/models/test_app/admin.rb", /def self\.table_name_prefix/
-    assert_file "app/models/test_app/admin.rb", /'test_app_admin_'/
+    assert_file "app/models/test_app/admin.rb", /"test_app_admin_"/
     assert_file "app/models/test_app/admin/account.rb", /module TestApp/, /class Admin::Account < ApplicationRecord/
   end
 
@@ -149,7 +149,7 @@ class NamespacedMailerGeneratorTest < NamespacedGeneratorTestCase
     assert_file "app/mailers/test_app/notifier_mailer.rb" do |mailer|
       assert_match(/module TestApp/, mailer)
       assert_match(/class NotifierMailer < ApplicationMailer/, mailer)
-      assert_no_match(/default from: "from@example.com"/, mailer)
+      assert_no_match(/default from: "from@example\.com"/, mailer)
     end
   end
 
@@ -213,7 +213,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Controller
     assert_file "app/controllers/test_app/product_lines_controller.rb",
-                /require_dependency "test_app\/application_controller"/,
                 /module TestApp/,
                 /class ProductLinesController < ApplicationController/
 
@@ -228,9 +227,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_file "app/helpers/test_app/product_lines_helper.rb"
-
-    # Stylesheets
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_scaffold_on_revoke
@@ -258,9 +254,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_no_file "app/helpers/test_app/product_lines_helper.rb"
-
-    # Stylesheets (should not be removed)
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_scaffold_with_namespace_on_invoke
@@ -281,7 +274,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
     # Controller
     assert_file "app/controllers/test_app/admin/roles_controller.rb" do |content|
       assert_match(/module TestApp\n  class Admin::RolesController < ApplicationController/, content)
-      assert_match(%r(require_dependency "test_app/application_controller"), content)
     end
 
     assert_file "test/controllers/test_app/admin/roles_controller_test.rb",
@@ -295,9 +287,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_file "app/helpers/test_app/admin/roles_helper.rb"
-
-    # Stylesheets
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_scaffold_with_namespace_on_revoke
@@ -305,7 +294,7 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
     run_generator [ "admin/role" ], behavior: :revoke
 
     # Model
-    assert_file "app/models/test_app/admin.rb"	# ( should not be remove )
+    assert_file "app/models/test_app/admin.rb"  # ( should not be remove )
     assert_no_file "app/models/test_app/admin/role.rb"
     assert_no_file "test/models/test_app/admin/role_test.rb"
     assert_no_file "test/fixtures/test_app/admin/roles.yml"
@@ -326,9 +315,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_no_file "app/helpers/test_app/admin/roles_helper.rb"
-
-    # Stylesheets (should not be removed)
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_scaffold_with_nested_namespace_on_invoke
@@ -362,9 +348,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_file "app/helpers/test_app/admin/user/special/roles_helper.rb"
-
-    # Stylesheets
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_scaffold_with_nested_namespace_on_revoke
@@ -372,7 +355,7 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
     run_generator [ "admin/user/special/role" ], behavior: :revoke
 
     # Model
-    assert_file "app/models/test_app/admin/user/special.rb"	# ( should not be remove )
+    assert_file "app/models/test_app/admin/user/special.rb"  # ( should not be remove )
     assert_no_file "app/models/test_app/admin/user/special/role.rb"
     assert_no_file "test/models/test_app/admin/user/special/role_test.rb"
     assert_no_file "test/fixtures/test_app/admin/user/special/roles.yml"
@@ -392,9 +375,6 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
 
     # Helpers
     assert_no_file "app/helpers/test_app/admin/user/special/roles_helper.rb"
-
-    # Stylesheets (should not be removed)
-    assert_file "app/assets/stylesheets/scaffold.css"
   end
 
   def test_api_scaffold_with_namespace_on_invoke
@@ -415,9 +395,18 @@ class NamespacedScaffoldGeneratorTest < NamespacedGeneratorTestCase
     # Controller
     assert_file "app/controllers/test_app/admin/roles_controller.rb" do |content|
       assert_match(/module TestApp\n  class Admin::RolesController < ApplicationController/, content)
-      assert_match(%r(require_dependency "test_app/application_controller"), content)
     end
     assert_file "test/controllers/test_app/admin/roles_controller_test.rb",
                 /module TestApp\n  class Admin::RolesControllerTest < ActionDispatch::IntegrationTest/
+  end
+end
+
+class NamespacedApplicationRecordGeneratorTest < NamespacedGeneratorTestCase
+  include GeneratorsTestHelper
+  tests Rails::Generators::ApplicationRecordGenerator
+
+  def test_adds_namespace_to_application_record
+    run_generator
+    assert_file "app/models/test_app/application_record.rb", /module TestApp/, /  class ApplicationRecord < ActiveRecord::Base/
   end
 end

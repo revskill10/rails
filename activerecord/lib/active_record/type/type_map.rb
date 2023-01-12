@@ -1,64 +1,58 @@
-require 'concurrent/map'
+# frozen_string_literal: true
+
+require "concurrent/map"
 
 module ActiveRecord
   module Type
     class TypeMap # :nodoc:
-      def initialize
+      def initialize(parent = nil)
         @mapping = {}
-        @cache = Concurrent::Map.new do |h, key|
-          h.fetch_or_store(key, Concurrent::Map.new)
-        end
+        @parent = parent
+        @cache = Concurrent::Map.new
       end
 
-      def lookup(lookup_key, *args)
-        fetch(lookup_key, *args) { default_value }
+      def lookup(lookup_key)
+        fetch(lookup_key) { Type.default_value }
       end
 
-      def fetch(lookup_key, *args, &block)
-        @cache[lookup_key].fetch_or_store(args) do
-          perform_fetch(lookup_key, *args, &block)
+      def fetch(lookup_key, &block)
+        @cache.fetch_or_store(lookup_key) do
+          perform_fetch(lookup_key, &block)
         end
       end
 
       def register_type(key, value = nil, &block)
         raise ::ArgumentError unless value || block
-        @cache.clear
 
         if block
           @mapping[key] = block
         else
           @mapping[key] = proc { value }
         end
+        @cache.clear
       end
 
       def alias_type(key, target_key)
-        register_type(key) do |sql_type, *args|
+        register_type(key) do |sql_type|
           metadata = sql_type[/\(.*\)/, 0]
-          lookup("#{target_key}#{metadata}", *args)
+          lookup("#{target_key}#{metadata}")
         end
       end
 
-      def clear
-        @mapping.clear
-      end
+      protected
+        def perform_fetch(lookup_key, &block)
+          matching_pair = @mapping.reverse_each.detect do |key, _|
+            key === lookup_key
+          end
 
-      private
-
-      def perform_fetch(lookup_key, *args)
-        matching_pair = @mapping.reverse_each.detect do |key, _|
-          key === lookup_key
+          if matching_pair
+            matching_pair.last.call(lookup_key)
+          elsif @parent
+            @parent.perform_fetch(lookup_key, &block)
+          else
+            yield lookup_key
+          end
         end
-
-        if matching_pair
-          matching_pair.last.call(lookup_key, *args)
-        else
-          yield lookup_key, *args
-        end
-      end
-
-      def default_value
-        @default_value ||= ActiveModel::Type::Value.new
-      end
     end
   end
 end

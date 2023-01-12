@@ -1,4 +1,7 @@
-require 'active_support/execution_wrapper'
+# frozen_string_literal: true
+
+require "active_support/execution_wrapper"
+require "active_support/executor"
 
 module ActiveSupport
   #--
@@ -26,14 +29,17 @@ module ActiveSupport
 
     define_callbacks :class_unload
 
+    # Registers a callback that will run once at application startup and every time the code is reloaded.
     def self.to_prepare(*args, &block)
       set_callback(:prepare, *args, &block)
     end
 
+    # Registers a callback that will run immediately before the classes are unloaded.
     def self.before_class_unload(*args, &block)
       set_callback(:class_unload, *args, &block)
     end
 
+    # Registers a callback that will run immediately after the classes are unloaded.
     def self.after_class_unload(*args, &block)
       set_callback(:class_unload, :after, *args, &block)
     end
@@ -44,17 +50,15 @@ module ActiveSupport
     def self.reload!
       executor.wrap do
         new.tap do |instance|
-          begin
-            instance.run!
-          ensure
-            instance.complete!
-          end
+          instance.run!
+        ensure
+          instance.complete!
         end
       end
       prepare!
     end
 
-    def self.run! # :nodoc:
+    def self.run!(reset: false) # :nodoc:
       if check!
         super
       else
@@ -63,17 +67,21 @@ module ActiveSupport
     end
 
     # Run the supplied block as a work unit, reloading code as needed
-    def self.wrap
-      executor.wrap do
-        super
+    def self.wrap(**kwargs)
+      return yield if active?
+
+      executor.wrap(**kwargs) do
+        instance = run!
+        begin
+          yield
+        ensure
+          instance.complete!
+        end
       end
     end
 
-    class_attribute :executor
-    class_attribute :check
-
-    self.executor = Executor
-    self.check = lambda { false }
+    class_attribute :executor, default: Executor
+    class_attribute :check, default: lambda { false }
 
     def self.check! # :nodoc:
       @should_reload ||= check.call

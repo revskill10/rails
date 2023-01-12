@@ -1,32 +1,35 @@
-require 'active_support/benchmarkable'
+# frozen_string_literal: true
 
-module ActionView #:nodoc:
-  module Helpers #:nodoc:
+require "active_support/benchmarkable"
+require "action_view/helpers/capture_helper"
+require "action_view/helpers/output_safety_helper"
+require "action_view/helpers/tag_helper"
+require "action_view/helpers/url_helper"
+require "action_view/helpers/sanitize_helper"
+require "action_view/helpers/text_helper"
+require "action_view/helpers/active_model_helper"
+require "action_view/helpers/asset_tag_helper"
+require "action_view/helpers/asset_url_helper"
+require "action_view/helpers/atom_feed_helper"
+require "action_view/helpers/cache_helper"
+require "action_view/helpers/content_exfiltration_prevention_helper"
+require "action_view/helpers/controller_helper"
+require "action_view/helpers/csp_helper"
+require "action_view/helpers/csrf_helper"
+require "action_view/helpers/date_helper"
+require "action_view/helpers/debug_helper"
+require "action_view/helpers/form_tag_helper"
+require "action_view/helpers/form_helper"
+require "action_view/helpers/form_options_helper"
+require "action_view/helpers/javascript_helper"
+require "action_view/helpers/number_helper"
+require "action_view/helpers/rendering_helper"
+require "action_view/helpers/translation_helper"
+
+module ActionView # :nodoc:
+  module Helpers # :nodoc:
     extend ActiveSupport::Autoload
 
-    autoload :ActiveModelHelper
-    autoload :AssetTagHelper
-    autoload :AssetUrlHelper
-    autoload :AtomFeedHelper
-    autoload :CacheHelper
-    autoload :CaptureHelper
-    autoload :ControllerHelper
-    autoload :CsrfHelper
-    autoload :DateHelper
-    autoload :DebugHelper
-    autoload :FormHelper
-    autoload :FormOptionsHelper
-    autoload :FormTagHelper
-    autoload :JavaScriptHelper, "action_view/helpers/javascript_helper"
-    autoload :NumberHelper
-    autoload :OutputSafetyHelper
-    autoload :RecordTagHelper
-    autoload :RenderingHelper
-    autoload :SanitizeHelper
-    autoload :TagHelper
-    autoload :TextHelper
-    autoload :TranslationHelper
-    autoload :UrlHelper
     autoload :Tags
 
     def self.eager_load!
@@ -43,7 +46,9 @@ module ActionView #:nodoc:
     include AtomFeedHelper
     include CacheHelper
     include CaptureHelper
+    include ContentExfiltrationPreventionHelper
     include ControllerHelper
+    include CspHelper
     include CsrfHelper
     include DateHelper
     include DebugHelper
@@ -53,7 +58,6 @@ module ActionView #:nodoc:
     include JavaScriptHelper
     include NumberHelper
     include OutputSafetyHelper
-    include RecordTagHelper
     include RenderingHelper
     include SanitizeHelper
     include TagHelper

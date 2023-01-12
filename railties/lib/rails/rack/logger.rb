@@ -1,8 +1,8 @@
-require 'active_support/core_ext/time/conversions'
-require 'active_support/core_ext/object/blank'
-require 'active_support/log_subscriber'
-require 'action_dispatch/http/request'
-require 'rack/body_proxy'
+# frozen_string_literal: true
+
+require "active_support/core_ext/time/conversions"
+require "active_support/log_subscriber"
+require "rack/body_proxy"
 
 module Rails
   module Rack
@@ -21,60 +21,60 @@ module Rails
         request = ActionDispatch::Request.new(env)
 
         if logger.respond_to?(:tagged)
-          logger.tagged(compute_tags(request)) { call_app(request, env) }
+          logger.tagged(*compute_tags(request)) { call_app(request, env) }
         else
           call_app(request, env)
         end
       end
 
-    protected
+      private
+        def call_app(request, env) # :doc:
+          instrumenter = ActiveSupport::Notifications.instrumenter
+          handle = instrumenter.build_handle("request.action_dispatch", { request: request })
+          handle.start
 
-      def call_app(request, env)
-        instrumenter = ActiveSupport::Notifications.instrumenter
-        instrumenter.start 'request.action_dispatch', request: request
-        logger.info { started_request_message(request) }
-        resp = @app.call(env)
-        resp[2] = ::Rack::BodyProxy.new(resp[2]) { finish(request) }
-        resp
-      rescue Exception
-        finish(request)
-        raise
-      ensure
-        ActiveSupport::LogSubscriber.flush_all!
-      end
+          logger.info { started_request_message(request) }
+          status, headers, body = response = @app.call(env)
+          body = ::Rack::BodyProxy.new(body, &handle.method(:finish))
 
-      # Started GET "/session/new" for 127.0.0.1 at 2012-09-26 14:51:42 -0700
-      def started_request_message(request)
-        'Started %s "%s" for %s at %s' % [
-          request.request_method,
-          request.filtered_path,
-          request.ip,
-          Time.now.to_default_s ]
-      end
-
-      def compute_tags(request)
-        @taggers.collect do |tag|
-          case tag
-          when Proc
-            tag.call(request)
-          when Symbol
-            request.send(tag)
+          if response.frozen?
+            [status, headers, body]
           else
-            tag
+            response[2] = body
+            response
+          end
+        rescue Exception
+          handle.finish
+          raise
+        ensure
+          ActiveSupport::LogSubscriber.flush_all!
+        end
+
+        # Started GET "/session/new" for 127.0.0.1 at 2012-09-26 14:51:42 -0700
+        def started_request_message(request) # :doc:
+          sprintf('Started %s "%s" for %s at %s',
+            request.raw_request_method,
+            request.filtered_path,
+            request.remote_ip,
+            Time.now.to_default_s)
+        end
+
+        def compute_tags(request) # :doc:
+          @taggers.collect do |tag|
+            case tag
+            when Proc
+              tag.call(request)
+            when Symbol
+              request.send(tag)
+            else
+              tag
+            end
           end
         end
-      end
 
-      private
-
-      def finish(request)
-        instrumenter = ActiveSupport::Notifications.instrumenter
-        instrumenter.finish 'request.action_dispatch', request: request
-      end
-
-      def logger
-        Rails.logger
-      end
+        def logger
+          Rails.logger
+        end
     end
   end
 end

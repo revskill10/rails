@@ -1,6 +1,8 @@
-require 'test_helper'
+# frozen_string_literal: true
 
-class WorkerTest < ActiveSupport::TestCase
+require "test_helper"
+
+class WorkerTest < ActionCable::TestCase
   class Receiver
     attr_accessor :last_action
 
@@ -9,7 +11,7 @@ class WorkerTest < ActiveSupport::TestCase
     end
 
     def process(message)
-      @last_action =  [ :process, message ]
+      @last_action = [ :process, message ]
     end
 
     def connection

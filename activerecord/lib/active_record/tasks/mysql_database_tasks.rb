@@ -1,48 +1,33 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module Tasks # :nodoc:
     class MySQLDatabaseTasks # :nodoc:
-      ACCESS_DENIED_ERROR = 1045
+      ER_DB_CREATE_EXISTS = 1007
 
-      delegate :connection, :establish_connection, to: ActiveRecord::Base
+      def self.using_database_configurations?
+        true
+      end
 
-      def initialize(configuration)
-        @configuration = configuration
+      def initialize(db_config)
+        @db_config = db_config
+        @configuration_hash = db_config.configuration_hash
       end
 
       def create
-        establish_connection configuration_without_database
-        connection.create_database configuration['database'], creation_options
-        establish_connection configuration
-      rescue ActiveRecord::StatementInvalid => error
-        if /database exists/ === error.message
-          raise DatabaseAlreadyExists
-        else
-          raise
-        end
-      rescue error_class => error
-        if error.respond_to?(:errno) && error.errno == ACCESS_DENIED_ERROR
-          $stdout.print error.message
-          establish_connection root_configuration_without_database
-          connection.create_database configuration['database'], creation_options
-          if configuration['username'] != 'root'
-            connection.execute grant_statement.gsub(/\s+/, ' ').strip
-          end
-          establish_connection configuration
-        else
-          $stderr.puts error.inspect
-          $stderr.puts "Couldn't create database for #{configuration.inspect}, #{creation_options.inspect}"
-          $stderr.puts "(If you set the charset manually, make sure you have a matching collation)" if configuration['encoding']
-        end
+        establish_connection(configuration_hash_without_database)
+        connection.create_database(db_config.database, creation_options)
+        establish_connection
       end
 
       def drop
-        establish_connection configuration
-        connection.drop_database configuration['database']
+        establish_connection
+        connection.drop_database(db_config.database)
       end
 
       def purge
-        establish_connection configuration
-        connection.recreate_database configuration['database'], creation_options
+        establish_connection(configuration_hash_without_database)
+        connection.recreate_database(db_config.database, creation_options)
       end
 
       def charset
@@ -53,100 +38,84 @@ module ActiveRecord
         connection.collation
       end
 
-      def structure_dump(filename)
+      def structure_dump(filename, extra_flags)
         args = prepare_command_options
         args.concat(["--result-file", "#{filename}"])
         args.concat(["--no-data"])
         args.concat(["--routines"])
         args.concat(["--skip-comments"])
-        args.concat(["#{configuration['database']}"])
 
-        run_cmd('mysqldump', args, 'dumping')
+        ignore_tables = ActiveRecord::SchemaDumper.ignore_tables
+        if ignore_tables.any?
+          ignore_tables = connection.data_sources.select { |table| ignore_tables.any? { |pattern| pattern === table } }
+          args += ignore_tables.map { |table| "--ignore-table=#{db_config.database}.#{table}" }
+        end
+
+        args.concat([db_config.database.to_s])
+        args.unshift(*extra_flags) if extra_flags
+
+        run_cmd("mysqldump", args, "dumping")
       end
 
-      def structure_load(filename)
+      def structure_load(filename, extra_flags)
         args = prepare_command_options
-        args.concat(['--execute', %{SET FOREIGN_KEY_CHECKS = 0; SOURCE #{filename}; SET FOREIGN_KEY_CHECKS = 1}])
-        args.concat(["--database", "#{configuration['database']}"])
+        args.concat(["--execute", %{SET FOREIGN_KEY_CHECKS = 0; SOURCE #{filename}; SET FOREIGN_KEY_CHECKS = 1}])
+        args.concat(["--database", db_config.database.to_s])
+        args.unshift(*extra_flags) if extra_flags
 
-        run_cmd('mysql', args, 'loading')
+        run_cmd("mysql", args, "loading")
       end
 
       private
+        attr_reader :db_config, :configuration_hash
 
-      def configuration
-        @configuration
-      end
-
-      def configuration_without_database
-        configuration.merge('database' => nil)
-      end
-
-      def creation_options
-        Hash.new.tap do |options|
-          options[:charset]     = configuration['encoding']   if configuration.include? 'encoding'
-          options[:collation]   = configuration['collation']  if configuration.include? 'collation'
+        def connection
+          ActiveRecord::Base.connection
         end
-      end
 
-      def error_class
-        if configuration['adapter'] =~ /jdbc/
-          require 'active_record/railties/jdbcmysql_error'
-          ArJdbcMySQL::Error
-        elsif defined?(Mysql2)
-          Mysql2::Error
-        else
-          StandardError
+        def establish_connection(config = db_config)
+          ActiveRecord::Base.establish_connection(config)
         end
-      end
 
-      def grant_statement
-        <<-SQL
-GRANT ALL PRIVILEGES ON #{configuration['database']}.*
-  TO '#{configuration['username']}'@'localhost'
-IDENTIFIED BY '#{configuration['password']}' WITH GRANT OPTION;
-        SQL
-      end
+        def configuration_hash_without_database
+          configuration_hash.merge(database: nil)
+        end
 
-      def root_configuration_without_database
-        configuration_without_database.merge(
-          'username' => 'root',
-          'password' => root_password
-        )
-      end
+        def creation_options
+          Hash.new.tap do |options|
+            options[:charset]     = configuration_hash[:encoding]   if configuration_hash.include?(:encoding)
+            options[:collation]   = configuration_hash[:collation]  if configuration_hash.include?(:collation)
+          end
+        end
 
-      def root_password
-        $stdout.print "Please provide the root password for your MySQL installation\n>"
-        $stdin.gets.strip
-      end
+        def prepare_command_options
+          args = {
+            host:      "--host",
+            port:      "--port",
+            socket:    "--socket",
+            username:  "--user",
+            password:  "--password",
+            encoding:  "--default-character-set",
+            sslca:     "--ssl-ca",
+            sslcert:   "--ssl-cert",
+            sslcapath: "--ssl-capath",
+            sslcipher: "--ssl-cipher",
+            sslkey:    "--ssl-key",
+            ssl_mode:  "--ssl-mode"
+          }.filter_map { |opt, arg| "#{arg}=#{configuration_hash[opt]}" if configuration_hash[opt] }
 
-      def prepare_command_options
-        args = {
-          'host'      => '--host',
-          'port'      => '--port',
-          'socket'    => '--socket',
-          'username'  => '--user',
-          'password'  => '--password',
-          'encoding'  => '--default-character-set',
-          'sslca'     => '--ssl-ca',
-          'sslcert'   => '--ssl-cert',
-          'sslcapath' => '--ssl-capath',
-          'sslcipher' => '--ssl-cipher',
-          'sslkey'    => '--ssl-key'
-        }.map { |opt, arg| "#{arg}=#{configuration[opt]}" if configuration[opt] }.compact
+          args
+        end
 
-        args
-      end
+        def run_cmd(cmd, args, action)
+          fail run_cmd_error(cmd, args, action) unless Kernel.system(cmd, *args)
+        end
 
-      def run_cmd(cmd, args, action)
-        fail run_cmd_error(cmd, args, action) unless Kernel.system(cmd, *args)
-      end
-
-      def run_cmd_error(cmd, args, action)
-        msg = "failed to execute: `#{cmd}`\n"
-        msg << "Please check the output above for any errors and make sure that `#{cmd}` is installed in your PATH and has proper permissions.\n\n"
-        msg
-      end
+        def run_cmd_error(cmd, args, action)
+          msg = +"failed to execute: `#{cmd}`\n"
+          msg << "Please check the output above for any errors and make sure that `#{cmd}` is installed in your PATH and has proper permissions.\n\n"
+          msg
+        end
     end
   end
 end

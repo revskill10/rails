@@ -1,9 +1,11 @@
-require 'date'
-require 'active_support/duration'
-require 'active_support/core_ext/object/acts_like'
-require 'active_support/core_ext/date/zones'
-require 'active_support/core_ext/time/zones'
-require 'active_support/core_ext/date_and_time/calculations'
+# frozen_string_literal: true
+
+require "date"
+require "active_support/duration"
+require "active_support/core_ext/object/acts_like"
+require "active_support/core_ext/date/zones"
+require "active_support/core_ext/time/zones"
+require "active_support/core_ext/date_and_time/calculations"
 
 class Date
   include DateAndTime::Calculations
@@ -11,22 +13,22 @@ class Date
   class << self
     attr_accessor :beginning_of_week_default
 
-    # Returns the week start (e.g. :monday) for the current request, if this has been set (via Date.beginning_of_week=).
+    # Returns the week start (e.g. +:monday+) for the current request, if this has been set (via Date.beginning_of_week=).
     # If <tt>Date.beginning_of_week</tt> has not been set for the current request, returns the week start specified in <tt>config.beginning_of_week</tt>.
-    # If no config.beginning_of_week was specified, returns :monday.
+    # If no +config.beginning_of_week+ was specified, returns +:monday+.
     def beginning_of_week
-      Thread.current[:beginning_of_week] || beginning_of_week_default || :monday
+      ::ActiveSupport::IsolatedExecutionState[:beginning_of_week] || beginning_of_week_default || :monday
     end
 
-    # Sets <tt>Date.beginning_of_week</tt> to a week start (e.g. :monday) for current request/thread.
+    # Sets <tt>Date.beginning_of_week</tt> to a week start (e.g. +:monday+) for current request/thread.
     #
     # This method accepts any of the following day symbols:
-    # :monday, :tuesday, :wednesday, :thursday, :friday, :saturday, :sunday
+    # +:monday+, +:tuesday+, +:wednesday+, +:thursday+, +:friday+, +:saturday+, +:sunday+
     def beginning_of_week=(week_start)
-      Thread.current[:beginning_of_week] = find_beginning_of_week!(week_start)
+      ::ActiveSupport::IsolatedExecutionState[:beginning_of_week] = find_beginning_of_week!(week_start)
     end
 
-    # Returns week start day symbol (e.g. :monday), or raises an +ArgumentError+ for invalid day symbol.
+    # Returns week start day symbol (e.g. +:monday+), or raises an +ArgumentError+ for invalid day symbol.
     def find_beginning_of_week!(week_start)
       raise ArgumentError, "Invalid beginning of week: #{week_start}" unless ::Date::DAYS_INTO_WEEK.key?(week_start)
       week_start
@@ -85,7 +87,7 @@ class Date
   end
   alias :at_end_of_day :end_of_day
 
-  def plus_with_duration(other) #:nodoc:
+  def plus_with_duration(other) # :nodoc:
     if ActiveSupport::Duration === other
       other.since(self)
     else
@@ -95,7 +97,7 @@ class Date
   alias_method :plus_without_duration, :+
   alias_method :+, :plus_with_duration
 
-  def minus_with_duration(other) #:nodoc:
+  def minus_with_duration(other) # :nodoc:
     if ActiveSupport::Duration === other
       plus_with_duration(-other)
     else
@@ -107,13 +109,29 @@ class Date
 
   # Provides precise Date calculations for years, months, and days. The +options+ parameter takes a hash with
   # any of these keys: <tt>:years</tt>, <tt>:months</tt>, <tt>:weeks</tt>, <tt>:days</tt>.
+  #
+  # The increments are applied in order of time units from largest to smallest.
+  # In other words, the date is incremented first by +:years+, then by
+  # +:months+, then by +:weeks+, then by +:days+. This order can affect the
+  # result around the end of a month. For example, incrementing first by months
+  # then by days:
+  #
+  #   Date.new(2004, 9, 30).advance(months: 1, days: 1)
+  #   # => Sun, 31 Oct 2004
+  #
+  # Whereas incrementing first by days then by months yields a different result:
+  #
+  #   Date.new(2004, 9, 30).advance(days: 1).advance(months: 1)
+  #   # => Mon, 01 Nov 2004
+  #
   def advance(options)
-    options = options.dup
     d = self
-    d = d >> options.delete(:years) * 12 if options[:years]
-    d = d >> options.delete(:months)     if options[:months]
-    d = d +  options.delete(:weeks) * 7  if options[:weeks]
-    d = d +  options.delete(:days)       if options[:days]
+
+    d = d >> options[:years] * 12 if options[:years]
+    d = d >> options[:months] if options[:months]
+    d = d + options[:weeks] * 7 if options[:weeks]
+    d = d + options[:days] if options[:days]
+
     d
   end
 
@@ -129,11 +147,11 @@ class Date
       options.fetch(:day, day)
     )
   end
-  
+
   # Allow Date to be compared with Time by converting to DateTime and relying on the <=> from there.
   def compare_with_coercion(other)
     if other.is_a?(Time)
-      self.to_datetime <=> other
+      to_datetime <=> other
     else
       compare_without_coercion(other)
     end

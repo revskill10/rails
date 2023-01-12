@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionCable
   module Channel
     # Streams allow channels to route broadcastings to the subscriber. A broadcasting is, as discussed elsewhere, a pubsub queue where any data
@@ -23,7 +25,7 @@ module ActionCable
     #
     # An example broadcasting for this channel looks like so:
     #
-    #   ActionCable.server.broadcast "comments_for_45", author: 'DHH', content: 'Rails is just swell'
+    #   ActionCable.server.broadcast "comments_for_45", { author: 'DHH', content: 'Rails is just swell' }
     #
     # If you have a stream that is related to a model, then the broadcasting used can be generated from the model and channel.
     # The following example would subscribe to a broadcasting like <tt>comments:Z2lkOi8vVGVzdEFwcC9Qb3N0LzE</tt>.
@@ -69,8 +71,8 @@ module ActionCable
 
       # Start streaming from the named <tt>broadcasting</tt> pubsub queue. Optionally, you can pass a <tt>callback</tt> that'll be used
       # instead of the default of just transmitting the updates straight to the subscriber.
-      # Pass `coder: ActiveSupport::JSON` to decode messages as JSON before passing to the callback.
-      # Defaults to `coder: nil` which does no decoding, passes raw messages.
+      # Pass <tt>coder: ActiveSupport::JSON</tt> to decode messages as JSON before passing to the callback.
+      # Defaults to <tt>coder: nil</tt> which does no decoding, passes raw messages.
       def stream_from(broadcasting, callback = nil, coder: nil, &block)
         broadcasting = String(broadcasting)
 
@@ -80,11 +82,11 @@ module ActionCable
         # Build a stream handler by wrapping the user-provided callback with
         # a decoder or defaulting to a JSON-decoding retransmitter.
         handler = worker_pool_stream_handler(broadcasting, callback || block, coder: coder)
-        streams << [ broadcasting, handler ]
+        streams[broadcasting] = handler
 
         connection.server.event_loop.post do
           pubsub.subscribe(broadcasting, handler, lambda do
-            transmit_subscription_confirmation
+            ensure_confirmation_sent
             logger.info "#{self.class.name} is streaming from #{broadcasting}"
           end)
         end
@@ -94,10 +96,24 @@ module ActionCable
       # <tt>callback</tt> that'll be used instead of the default of just transmitting the updates straight
       # to the subscriber.
       #
-      # Pass `coder: ActiveSupport::JSON` to decode messages as JSON before passing to the callback.
-      # Defaults to `coder: nil` which does no decoding, passes raw messages.
+      # Pass <tt>coder: ActiveSupport::JSON</tt> to decode messages as JSON before passing to the callback.
+      # Defaults to <tt>coder: nil</tt> which does no decoding, passes raw messages.
       def stream_for(model, callback = nil, coder: nil, &block)
-        stream_from(broadcasting_for([ channel_name, model ]), callback || block, coder: coder)
+        stream_from(broadcasting_for(model), callback || block, coder: coder)
+      end
+
+      # Unsubscribes streams from the named <tt>broadcasting</tt>.
+      def stop_stream_from(broadcasting)
+        callback = streams.delete(broadcasting)
+        if callback
+          pubsub.unsubscribe(broadcasting, callback)
+          logger.info "#{self.class.name} stopped streaming from #{broadcasting}"
+        end
+      end
+
+      # Unsubscribes streams for the <tt>model</tt>.
+      def stop_stream_for(model)
+        stop_stream_from(broadcasting_for(model))
       end
 
       # Unsubscribes all streams associated with this channel from the pubsub queue.
@@ -108,11 +124,21 @@ module ActionCable
         end.clear
       end
 
+      # Calls stream_for with the given <tt>model</tt> if it's present to start streaming,
+      # otherwise rejects the subscription.
+      def stream_or_reject_for(model)
+        if model
+          stream_for model
+        else
+          reject
+        end
+      end
+
       private
         delegate :pubsub, to: :connection
 
         def streams
-          @_streams ||= []
+          @_streams ||= {}
         end
 
         # Always wrap the outermost handler to invoke the user handler on the

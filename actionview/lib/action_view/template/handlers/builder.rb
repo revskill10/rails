@@ -1,26 +1,25 @@
+# frozen_string_literal: true
+
 module ActionView
   module Template::Handlers
     class Builder
-      # Default format used by Builder.
-      class_attribute :default_format
-      self.default_format = :xml
+      class_attribute :default_format, default: :xml
 
-      def call(template)
+      def call(template, source)
         require_engine
-        "xml = ::Builder::XmlMarkup.new(:indent => 2);" +
-          "self.output_buffer = xml.target!;" +
-          template.source +
-          ";xml.target!;"
+        # the double assignment is to silence "assigned but unused variable" warnings
+        "xml = xml = ::Builder::XmlMarkup.new(indent: 2, target: output_buffer.raw);" \
+          "#{source};" \
+          "output_buffer.to_s"
       end
 
-      protected
-
-      def require_engine
-        @required ||= begin
-          require "builder"
-          true
+      private
+        def require_engine # :doc:
+          @required ||= begin
+            require "builder"
+            true
+          end
         end
-      end
     end
   end
 end

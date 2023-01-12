@@ -1,16 +1,19 @@
+# frozen_string_literal: true
+
 require "cases/helper"
-require "active_model/type"
+require "active_support/core_ext/numeric/time"
 
 module ActiveModel
   module Type
     class IntegerTest < ActiveModel::TestCase
       test "simple values" do
         type = Type::Integer.new
+        assert_nil type.cast("")
         assert_equal 1, type.cast(1)
-        assert_equal 1, type.cast('1')
-        assert_equal 1, type.cast('1ignore')
-        assert_equal 0, type.cast('bad1')
-        assert_equal 0, type.cast('bad')
+        assert_equal 1, type.cast("1")
+        assert_equal 1, type.cast("1ignore")
+        assert_equal 0, type.cast("bad1")
+        assert_equal 0, type.cast("bad")
         assert_equal 1, type.cast(1.7)
         assert_equal 0, type.cast(false)
         assert_equal 1, type.cast(true)
@@ -19,8 +22,8 @@ module ActiveModel
 
       test "random objects cast to nil" do
         type = Type::Integer.new
-        assert_nil type.cast([1,2])
-        assert_nil type.cast({1 => 2})
+        assert_nil type.cast([1, 2])
+        assert_nil type.cast(1 => 2)
         assert_nil type.cast(1..2)
       end
 
@@ -32,7 +35,7 @@ module ActiveModel
       test "casting nan and infinity" do
         type = Type::Integer.new
         assert_nil type.cast(::Float::NAN)
-        assert_nil type.cast(1.0/0.0)
+        assert_nil type.cast(1.0 / 0.0)
       end
 
       test "casting booleans for database" do
@@ -41,14 +44,39 @@ module ActiveModel
         assert_equal 0, type.serialize(false)
       end
 
+      test "casting duration" do
+        type = Type::Integer.new
+        assert_equal 1800, type.cast(30.minutes)
+        assert_equal 7200, type.cast(2.hours)
+      end
+
+      test "casting string for database" do
+        type = Type::Integer.new
+        assert_nil type.serialize("wibble")
+        assert_equal 5, type.serialize("5wibble")
+        assert_equal 5, type.serialize(" +5")
+        assert_equal(-5, type.serialize(" -5"))
+      end
+
+      test "casting empty string" do
+        type = Type::Integer.new
+        assert_nil type.cast("")
+        assert_nil type.serialize("")
+        assert_nil type.deserialize("")
+      end
+
       test "changed?" do
         type = Type::Integer.new
 
-        assert type.changed?(5, 5, '5wibble')
-        assert_not type.changed?(5, 5, '5')
-        assert_not type.changed?(5, 5, '5.0')
-        assert_not type.changed?(-5, -5, '-5')
-        assert_not type.changed?(-5, -5, '-5.0')
+        assert type.changed?(0, 0, "wibble")
+        assert type.changed?(5, 0, "wibble")
+        assert_not type.changed?(5, 5, "5wibble")
+        assert_not type.changed?(5, 5, "5")
+        assert_not type.changed?(5, 5, "5.0")
+        assert_not type.changed?(5, 5, "+5")
+        assert_not type.changed?(5, 5, "+5.0")
+        assert_not type.changed?(-5, -5, "-5")
+        assert_not type.changed?(-5, -5, "-5.0")
         assert_not type.changed?(nil, nil, nil)
       end
 
@@ -101,6 +129,18 @@ module ActiveModel
         end
         assert_raises(ActiveModel::RangeError) do
           type.serialize(9999999999999999999999999999999)
+        end
+      end
+
+      test "serialize_cast_value enforces range" do
+        type = Integer.new
+
+        assert_raises(ActiveModel::RangeError) do
+          type.serialize_cast_value(-2147483649)
+        end
+
+        assert_raises(ActiveModel::RangeError) do
+          type.serialize_cast_value(2147483648)
         end
       end
     end

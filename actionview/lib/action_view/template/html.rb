@@ -1,22 +1,21 @@
-module ActionView #:nodoc:
-  # = Action View HTML Template
-  class Template
-    class HTML #:nodoc:
-      attr_accessor :type
+# frozen_string_literal: true
 
-      def initialize(string, type = nil)
+module ActionView # :nodoc:
+  # = Action View HTML Template
+  class Template # :nodoc:
+    class HTML # :nodoc:
+      attr_reader :type
+
+      def initialize(string, type)
         @string = string.to_s
-        @type   = Types[type] || type if type
-        @type ||= Types[:html]
+        @type   = type
       end
 
       def identifier
-        'html template'
+        "html template"
       end
 
-      def inspect
-        'html template'
-      end
+      alias_method :inspect, :identifier
 
       def to_str
         ERB::Util.h(@string)
@@ -26,8 +25,8 @@ module ActionView #:nodoc:
         to_str
       end
 
-      def formats
-        [@type.respond_to?(:ref) ? @type.ref : @type.to_s]
+      def format
+        @type
       end
     end
   end

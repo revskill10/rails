@@ -1,14 +1,15 @@
+# frozen_string_literal: true
+
 require "active_model/validations/clusivity"
 
 module ActiveModel
-
   module Validations
     class ExclusionValidator < EachValidator # :nodoc:
       include Clusivity
 
       def validate_each(record, attribute, value)
         if include?(record, value)
-          record.errors.add(attribute, :exclusion, options.except(:in, :within).merge!(value: value))
+          record.errors.add(attribute, :exclusion, **options.except(:in, :within).merge!(value: value))
         end
       end
     end
@@ -28,8 +29,8 @@ module ActiveModel
       #
       # Configuration options:
       # * <tt>:in</tt> - An enumerable object of items that the value shouldn't
-      #   be part of. This can be supplied as a proc, lambda or symbol which returns an
-      #   enumerable. If the enumerable is a numerical, time or datetime range the test
+      #   be part of. This can be supplied as a proc, lambda, or symbol which returns an
+      #   enumerable. If the enumerable is a numerical, time, or datetime range the test
       #   is performed with <tt>Range#cover?</tt>, otherwise with <tt>include?</tt>. When
       #   using a proc or lambda the instance under validation is passed as an argument.
       # * <tt>:within</tt> - A synonym(or alias) for <tt>:in</tt>
@@ -39,7 +40,7 @@ module ActiveModel
       #
       # There is also a list of default options supported by every validator:
       # +:if+, +:unless+, +:on+, +:allow_nil+, +:allow_blank+, and +:strict+.
-      # See <tt>ActiveModel::Validation#validates</tt> for more information
+      # See ActiveModel::Validations::ClassMethods#validates for more information.
       def validates_exclusion_of(*attr_names)
         validates_with ExclusionValidator, _merge_attributes(attr_names)
       end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionDispatch
   # This middleware can be used to diagnose deadlocks in the autoload interlock.
   #
@@ -7,9 +9,9 @@ module ActionDispatch
   #     config.middleware.insert_before Rack::Sendfile, ActionDispatch::DebugLocks
   #
   # After restarting the application and re-triggering the deadlock condition,
-  # <tt>/rails/locks</tt> will show a summary of all threads currently known to
-  # the interlock, which lock level they are holding or awaiting, and their
-  # current backtrace.
+  # the route <tt>/rails/locks</tt> will show a summary of all threads currently
+  # known to the interlock, which lock level they are holding or awaiting, and
+  # their current backtrace.
   #
   # Generally a deadlock will be caused by the interlock conflicting with some
   # other external lock or blocking I/O call. These cannot be automatically
@@ -21,7 +23,7 @@ module ActionDispatch
   # This middleware exposes operational details of the server, with no access
   # control. It should only be enabled when in use, and removed thereafter.
   class DebugLocks
-    def initialize(app, path = '/rails/locks')
+    def initialize(app, path = "/rails/locks")
       @app = app
       @path = path
     end
@@ -30,7 +32,7 @@ module ActionDispatch
       req = ActionDispatch::Request.new env
 
       if req.get?
-        path = req.path_info.chomp('/'.freeze)
+        path = req.path_info.chomp("/")
         if path == @path
           return render_details(req)
         end
@@ -41,7 +43,7 @@ module ActionDispatch
 
     private
       def render_details(req)
-        threads = ActiveSupport::Dependencies.interlock.raw_state do |threads|
+        threads = ActiveSupport::Dependencies.interlock.raw_state do |raw_threads|
           # The Interlock itself comes to a complete halt as long as this block
           # is executing. That gives us a more consistent picture of everything,
           # but creates a pretty strong Observer Effect.
@@ -51,29 +53,29 @@ module ActionDispatch
           # strictly diagnostic tool (to be used when something has gone wrong),
           # and not for any sort of general monitoring.
 
-          threads.each.with_index do |(thread, info), idx|
+          raw_threads.each.with_index do |(thread, info), idx|
             info[:index] = idx
             info[:backtrace] = thread.backtrace
           end
 
-          threads
+          raw_threads
         end
 
         str = threads.map do |thread, info|
           if info[:exclusive]
-            lock_state = 'Exclusive'
+            lock_state = +"Exclusive"
           elsif info[:sharing] > 0
-            lock_state = 'Sharing'
+            lock_state = +"Sharing"
             lock_state << " x#{info[:sharing]}" if info[:sharing] > 1
           else
-            lock_state = 'No lock'
+            lock_state = +"No lock"
           end
 
           if info[:waiting]
-            lock_state << ' (yielded share)'
+            lock_state << " (yielded share)"
           end
 
-          msg = "Thread #{info[:index]} [0x#{thread.__id__.to_s(16)} #{thread.status || 'dead'}]  #{lock_state}\n"
+          msg = +"Thread #{info[:index]} [0x#{thread.__id__.to_s(16)} #{thread.status || 'dead'}]  #{lock_state}\n"
 
           if info[:sleeper]
             msg << "  Waiting in #{info[:sleeper]}"
@@ -86,11 +88,11 @@ module ActionDispatch
             end
 
             blockers = threads.values.select { |binfo| blocked_by?(info, binfo, threads.values) }
-            msg << "  blocked by: #{blockers.map {|i| i[:index] }.join(', ')}\n" if blockers.any?
+            msg << "  blocked by: #{blockers.map { |i| i[:index] }.join(', ')}\n" if blockers.any?
           end
 
           blockees = threads.values.select { |binfo| blocked_by?(binfo, info, threads.values) }
-          msg << "  blocking: #{blockees.map {|i| i[:index] }.join(', ')}\n" if blockees.any?
+          msg << "  blocking: #{blockees.map { |i| i[:index] }.join(', ')}\n" if blockees.any?
 
           msg << "\n#{info[:backtrace].join("\n")}\n" if info[:backtrace]
         end.join("\n\n---\n\n\n")

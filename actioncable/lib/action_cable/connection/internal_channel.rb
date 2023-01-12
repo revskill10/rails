@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionCable
   module Connection
     # Makes it possible for the RemoteConnection to disconnect a specific connection.
@@ -27,10 +29,10 @@ module ActionCable
         end
 
         def process_internal_message(message)
-          case message['type']
-          when 'disconnect'
+          case message["type"]
+          when "disconnect"
             logger.info "Removing connection (#{connection_identifier})"
-            websocket.close
+            close(reason: ActionCable::INTERNAL[:disconnect_reasons][:remote], reconnect: message.fetch("reconnect", true))
           end
         rescue Exception => e
           logger.error "There was an exception - #{e.class}(#{e.message})"

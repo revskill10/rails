@@ -1,20 +1,27 @@
-require 'isolation/abstract_unit'
+# frozen_string_literal: true
+
+require "isolation/abstract_unit"
 
 module ApplicationTests
   class TestTest < ActiveSupport::TestCase
     include ActiveSupport::Testing::Isolation
 
     def setup
+      @old = ENV["PARALLEL_WORKERS"]
+      ENV["PARALLEL_WORKERS"] = "0"
+
       build_app
     end
 
     def teardown
+      ENV["PARALLEL_WORKERS"] = @old
+
       teardown_app
     end
 
-    test "truth" do
-      app_file 'test/unit/foo_test.rb', <<-RUBY
-        require 'test_helper'
+    test "simple successful test" do
+      app_file "test/unit/foo_test.rb", <<-RUBY
+        require "test_helper"
 
         class FooTest < ActiveSupport::TestCase
           def test_truth
@@ -23,21 +30,53 @@ module ApplicationTests
         end
       RUBY
 
-      assert_successful_test_run 'unit/foo_test.rb'
+      assert_successful_test_run "unit/foo_test.rb"
+    end
+
+    test "after_run" do
+      app_file "test/unit/foo_test.rb", <<-RUBY
+        require "test_helper"
+
+        Minitest.after_run { puts "WORLD" }
+        Minitest.after_run { puts "HELLO" }
+
+        class FooTest < ActiveSupport::TestCase
+          def test_truth
+            assert true
+          end
+        end
+      RUBY
+
+      result = assert_successful_test_run "unit/foo_test.rb"
+      assert_equal ["HELLO", "WORLD"], result.scan(/HELLO|WORLD/) # only once and in correct order
+    end
+
+    test "simple failed test" do
+      app_file "test/unit/foo_test.rb", <<-RUBY
+        require "test_helper"
+
+        class FooTest < ActiveSupport::TestCase
+          def test_truth
+            assert false
+          end
+        end
+      RUBY
+
+      assert_unsuccessful_run "unit/foo_test.rb", "Failure:\nFooTest#test_truth"
     end
 
     test "integration test" do
-      controller 'posts', <<-RUBY
+      controller "posts", <<-RUBY
         class PostsController < ActionController::Base
         end
       RUBY
 
-      app_file 'app/views/posts/index.html.erb', <<-HTML
+      app_file "app/views/posts/index.html.erb", <<-HTML
         Posts#index
       HTML
 
-      app_file 'test/integration/posts_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/integration/posts_test.rb", <<-RUBY
+        require "test_helper"
 
         class PostsTest < ActionDispatch::IntegrationTest
           def test_index
@@ -48,12 +87,12 @@ module ApplicationTests
         end
       RUBY
 
-      assert_successful_test_run 'integration/posts_test.rb'
+      assert_successful_test_run "integration/posts_test.rb"
     end
 
     test "enable full backtraces on test failures" do
-      app_file 'test/unit/failing_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/unit/failing_test.rb", <<-RUBY
+        require "test_helper"
 
         class FailingTest < ActiveSupport::TestCase
           def test_failure
@@ -62,17 +101,17 @@ module ApplicationTests
         end
       RUBY
 
-      output = run_test_file('unit/failing_test.rb', env: { "BACKTRACE" => "1" })
+      output = run_test_file("unit/failing_test.rb")
       assert_match %r{test/unit/failing_test\.rb}, output
       assert_match %r{test/unit/failing_test\.rb:4}, output
     end
 
     test "ruby schema migrations" do
-      output  = script('generate model user name:string')
+      output  = rails("generate", "model", "user", "name:string")
       version = output.match(/(\d+)_create_users\.rb/)[1]
 
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
 
         class UserTest < ActiveSupport::TestCase
           test "user" do
@@ -80,11 +119,11 @@ module ApplicationTests
           end
         end
       RUBY
-      app_file 'db/schema.rb', ''
+      app_file "db/schema.rb", ""
 
       assert_unsuccessful_run "models/user_test.rb", "Migrations are pending"
 
-      app_file 'db/schema.rb', <<-RUBY
+      app_file "db/schema.rb", <<-RUBY
         ActiveRecord::Schema.define(version: #{version}) do
           create_table :users do |t|
             t.string :name
@@ -92,7 +131,7 @@ module ApplicationTests
         end
       RUBY
 
-      app_file 'config/initializers/disable_maintain_test_schema.rb', <<-RUBY
+      app_file "config/initializers/disable_maintain_test_schema.rb", <<-RUBY
         Rails.application.config.active_record.maintain_test_schema = false
       RUBY
 
@@ -100,16 +139,16 @@ module ApplicationTests
 
       File.delete "#{app_path}/config/initializers/disable_maintain_test_schema.rb"
 
-      result = assert_successful_test_run('models/user_test.rb')
-      assert !result.include?("create_table(:users)")
+      result = assert_successful_test_run("models/user_test.rb")
+      assert_not_includes result, "create_table(:users)"
     end
 
     test "sql structure migrations" do
-      output  = script('generate model user name:string')
+      output  = rails("generate", "model", "user", "name:string")
       version = output.match(/(\d+)_create_users\.rb/)[1]
 
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
 
         class UserTest < ActiveSupport::TestCase
           test "user" do
@@ -118,21 +157,21 @@ module ApplicationTests
         end
       RUBY
 
-      app_file 'db/structure.sql', ''
-      app_file 'config/initializers/enable_sql_schema_format.rb', <<-RUBY
+      app_file "db/structure.sql", ""
+      app_file "config/initializers/enable_sql_schema_format.rb", <<-RUBY
         Rails.application.config.active_record.schema_format = :sql
       RUBY
 
       assert_unsuccessful_run "models/user_test.rb", "Migrations are pending"
 
-      app_file 'db/structure.sql', <<-SQL
+      app_file "db/structure.sql", <<-SQL
         CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
         CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
         CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255));
         INSERT INTO schema_migrations (version) VALUES ('#{version}');
       SQL
 
-      app_file 'config/initializers/disable_maintain_test_schema.rb', <<-RUBY
+      app_file "config/initializers/disable_maintain_test_schema.rb", <<-RUBY
         Rails.application.config.active_record.maintain_test_schema = false
       RUBY
 
@@ -140,15 +179,15 @@ module ApplicationTests
 
       File.delete "#{app_path}/config/initializers/disable_maintain_test_schema.rb"
 
-      assert_successful_test_run('models/user_test.rb')
+      assert_successful_test_run("models/user_test.rb")
     end
 
     test "sql structure migrations when adding column to existing table" do
-      output_1  = script('generate model user name:string')
+      output_1  = rails("generate", "model", "user", "name:string")
       version_1 = output_1.match(/(\d+)_create_users\.rb/)[1]
 
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
         class UserTest < ActiveSupport::TestCase
           test "user" do
             User.create! name: "Jon"
@@ -156,24 +195,24 @@ module ApplicationTests
         end
       RUBY
 
-      app_file 'config/initializers/enable_sql_schema_format.rb', <<-RUBY
+      app_file "config/initializers/enable_sql_schema_format.rb", <<-RUBY
         Rails.application.config.active_record.schema_format = :sql
       RUBY
 
-      app_file 'db/structure.sql', <<-SQL
+      app_file "db/structure.sql", <<-SQL
         CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
         CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
         CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255));
         INSERT INTO schema_migrations (version) VALUES ('#{version_1}');
       SQL
 
-      assert_successful_test_run('models/user_test.rb')
+      assert_successful_test_run("models/user_test.rb")
 
-      output_2  = script('generate migration add_email_to_users')
+      output_2  = rails("generate", "migration", "add_email_to_users")
       version_2 = output_2.match(/(\d+)_add_email_to_users\.rb/)[1]
 
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
 
         class UserTest < ActiveSupport::TestCase
           test "user" do
@@ -182,7 +221,7 @@ module ApplicationTests
         end
       RUBY
 
-      app_file 'db/structure.sql', <<-SQL
+      app_file "db/structure.sql", <<-SQL
         CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
         CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
         CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255), "email" varchar(255));
@@ -190,18 +229,15 @@ module ApplicationTests
         INSERT INTO schema_migrations (version) VALUES ('#{version_2}');
       SQL
 
-      assert_successful_test_run('models/user_test.rb')
+      assert_successful_test_run("models/user_test.rb")
     end
 
-    # TODO: would be nice if we could detect the schema change automatically.
-    # For now, the user has to synchronize the schema manually.
-    # This test-case serves as a reminder for this use-case.
-    test "manually synchronize test schema after rollback" do
-      output  = script('generate model user name:string')
+    test "automatically synchronizes test schema after rollback" do
+      output  = rails("generate", "model", "user", "name:string")
       version = output.match(/(\d+)_create_users\.rb/)[1]
 
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
 
         class UserTest < ActiveSupport::TestCase
           test "user" do
@@ -209,7 +245,7 @@ module ApplicationTests
           end
         end
       RUBY
-      app_file 'db/schema.rb', <<-RUBY
+      app_file "db/schema.rb", <<-RUBY
         ActiveRecord::Schema.define(version: #{version}) do
           create_table :users do |t|
             t.string :name
@@ -220,7 +256,7 @@ module ApplicationTests
       assert_successful_test_run "models/user_test.rb"
 
       # Simulate `db:rollback` + edit of the migration file + `db:migrate`
-      app_file 'db/schema.rb', <<-RUBY
+      app_file "db/schema.rb", <<-RUBY
         ActiveRecord::Schema.define(version: #{version}) do
           create_table :users do |t|
             t.string :name
@@ -229,10 +265,6 @@ module ApplicationTests
         end
       RUBY
 
-      assert_successful_test_run "models/user_test.rb"
-
-      Dir.chdir(app_path) { `bin/rails db:test:prepare` }
-
       assert_unsuccessful_run "models/user_test.rb", <<-ASSERTION
 Expected: ["id", "name"]
   Actual: ["id", "name", "age"]
@@ -240,10 +272,10 @@ Expected: ["id", "name"]
     end
 
     test "hooks for plugins" do
-      output  = script('generate model user name:string')
+      output  = rails("generate", "model", "user", "name:string")
       version = output.match(/(\d+)_create_users\.rb/)[1]
 
-      app_file 'lib/tasks/hooks.rake', <<-RUBY
+      app_file "lib/tasks/hooks.rake", <<-RUBY
         task :before_hook do
           has_user_table = ActiveRecord::Base.connection.table_exists?('users')
           puts "before: " + has_user_table.to_s
@@ -258,8 +290,8 @@ Expected: ["id", "name"]
           Rake::Task[:after_hook].invoke
         end
       RUBY
-      app_file 'test/models/user_test.rb', <<-RUBY
-        require 'test_helper'
+      app_file "test/models/user_test.rb", <<-RUBY
+        require "test_helper"
         class UserTest < ActiveSupport::TestCase
           test "user" do
             User.create! name: "Jon"
@@ -268,7 +300,7 @@ Expected: ["id", "name"]
       RUBY
 
       # Simulate `db:migrate`
-      app_file 'db/schema.rb', <<-RUBY
+      app_file "db/schema.rb", <<-RUBY
         ActiveRecord::Schema.define(version: #{version}) do
           create_table :users do |t|
             t.string :name
@@ -289,7 +321,7 @@ Expected: ["id", "name"]
       def assert_unsuccessful_run(name, message)
         result = run_test_file(name)
         assert_not_equal 0, $?.to_i
-        assert result.include?(message)
+        assert_includes result, message
         result
       end
 
@@ -299,8 +331,8 @@ Expected: ["id", "name"]
         result
       end
 
-      def run_test_file(name, options = {})
-        Dir.chdir(app_path) { `bin/rails test "#{app_path}/test/#{name}" 2>&1` }
+      def run_test_file(name)
+        rails "test", "#{app_path}/test/#{name}", allow_failure: true
       end
   end
 end

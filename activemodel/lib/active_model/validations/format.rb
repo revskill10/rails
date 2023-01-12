@@ -1,14 +1,19 @@
-module ActiveModel
+# frozen_string_literal: true
 
+require "active_model/validations/resolve_value"
+
+module ActiveModel
   module Validations
     class FormatValidator < EachValidator # :nodoc:
+      include ResolveValue
+
       def validate_each(record, attribute, value)
         if options[:with]
-          regexp = option_call(record, :with)
-          record_error(record, attribute, :with, value) if value.to_s !~ regexp
+          regexp = resolve_value(record, options[:with])
+          record_error(record, attribute, :with, value) unless regexp.match?(value.to_s)
         elsif options[:without]
-          regexp = option_call(record, :without)
-          record_error(record, attribute, :without, value) if value.to_s =~ regexp
+          regexp = resolve_value(record, options[:without])
+          record_error(record, attribute, :without, value) if regexp.match?(value.to_s)
         end
       end
 
@@ -22,34 +27,28 @@ module ActiveModel
       end
 
       private
+        def record_error(record, attribute, name, value)
+          record.errors.add(attribute, :invalid, **options.except(name).merge!(value: value))
+        end
 
-      def option_call(record, name)
-        option = options[name]
-        option.respond_to?(:call) ? option.call(record) : option
-      end
-
-      def record_error(record, attribute, name, value)
-        record.errors.add(attribute, :invalid, options.except(name).merge!(value: value))
-      end
-
-      def check_options_validity(name)
-        if option = options[name]
-          if option.is_a?(Regexp)
-            if options[:multiline] != true && regexp_using_multiline_anchors?(option)
-              raise ArgumentError, "The provided regular expression is using multiline anchors (^ or $), " \
-              "which may present a security risk. Did you mean to use \\A and \\z, or forgot to add the " \
-              ":multiline => true option?"
+        def check_options_validity(name)
+          if option = options[name]
+            if option.is_a?(Regexp)
+              if options[:multiline] != true && regexp_using_multiline_anchors?(option)
+                raise ArgumentError, "The provided regular expression is using multiline anchors (^ or $), " \
+                "which may present a security risk. Did you mean to use \\A and \\z, or forgot to add the " \
+                ":multiline => true option?"
+              end
+            elsif !option.respond_to?(:call)
+              raise ArgumentError, "A regular expression or a proc or lambda must be supplied as :#{name}"
             end
-          elsif !option.respond_to?(:call)
-            raise ArgumentError, "A regular expression or a proc or lambda must be supplied as :#{name}"
           end
         end
-      end
 
-      def regexp_using_multiline_anchors?(regexp)
-        source = regexp.source
-        source.start_with?("^") || (source.end_with?("$") && !source.end_with?("\\$"))
-      end
+        def regexp_using_multiline_anchors?(regexp)
+          source = regexp.source
+          source.start_with?("^") || (source.end_with?("$") && !source.end_with?("\\$"))
+        end
     end
 
     module HelperMethods
@@ -104,7 +103,7 @@ module ActiveModel
       #
       # There is also a list of default options supported by every validator:
       # +:if+, +:unless+, +:on+, +:allow_nil+, +:allow_blank+, and +:strict+.
-      # See <tt>ActiveModel::Validation#validates</tt> for more information
+      # See ActiveModel::Validations::ClassMethods#validates for more information.
       def validates_format_of(*attr_names)
         validates_with FormatValidator, _merge_attributes(attr_names)
       end

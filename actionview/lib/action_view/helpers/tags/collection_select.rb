@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module ActionView
   module Helpers
     module Tags # :nodoc:
-      class CollectionSelect < Base #:nodoc:
+      class CollectionSelect < Base # :nodoc:
         def initialize(object_name, method_name, template_object, collection, value_method, text_method, options, html_options)
           @collection   = collection
           @value_method = value_method
@@ -13,8 +15,8 @@ module ActionView
 
         def render
           option_tags_options = {
-            :selected => @options.fetch(:selected) { value(@object) },
-            :disabled => @options[:disabled]
+            selected: @options.fetch(:selected) { value },
+            disabled: @options[:disabled]
           }
 
           select_content_tag(

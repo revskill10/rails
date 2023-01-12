@@ -1,4 +1,6 @@
-require 'monitor'
+# frozen_string_literal: true
+
+require "monitor"
 
 module ActionCable
   module Server
@@ -10,36 +12,45 @@ module ActionCable
       include ActionCable::Server::Broadcasting
       include ActionCable::Server::Connections
 
-      cattr_accessor(:config, instance_accessor: true) { ActionCable::Server::Configuration.new }
+      cattr_accessor :config, instance_accessor: false, default: ActionCable::Server::Configuration.new
+
+      attr_reader :config
 
       def self.logger; config.logger; end
       delegate :logger, to: :config
 
       attr_reader :mutex
 
-      def initialize
+      def initialize(config: self.class.config)
+        @config = config
         @mutex = Monitor.new
         @remote_connections = @event_loop = @worker_pool = @pubsub = nil
       end
 
-      # Called by Rack to setup the server.
+      # Called by Rack to set up the server.
       def call(env)
         setup_heartbeat_timer
         config.connection_class.call.new(self, env).process
       end
 
-      # Disconnect all the connections identified by `identifiers` on this server or any others via RemoteConnections.
+      # Disconnect all the connections identified by +identifiers+ on this server or any others via RemoteConnections.
       def disconnect(identifiers)
         remote_connections.where(identifiers).disconnect
       end
 
       def restart
-        connections.each(&:close)
+        connections.each do |connection|
+          connection.close(reason: ActionCable::INTERNAL[:disconnect_reasons][:server_restart])
+        end
 
         @mutex.synchronize do
-          worker_pool.halt if @worker_pool
-
+          # Shutdown the worker pool
+          @worker_pool.halt if @worker_pool
           @worker_pool = nil
+
+          # Shutdown the pub/sub adapter
+          @pubsub.shutdown if @pubsub
+          @pubsub = nil
         end
       end
 
@@ -49,12 +60,12 @@ module ActionCable
       end
 
       def event_loop
-        @event_loop || @mutex.synchronize { @event_loop ||= config.event_loop_class.new }
+        @event_loop || @mutex.synchronize { @event_loop ||= ActionCable::Connection::StreamEventLoop.new }
       end
 
       # The worker pool is where we run connection callbacks and channel actions. We do as little as possible on the server's main thread.
       # The worker pool is an executor service that's backed by a pool of threads working from a task queue. The thread pool size maxes out
-      # at 4 worker threads by default. Tune the size yourself with `config.action_cable.worker_pool_size`.
+      # at 4 worker threads by default. Tune the size yourself with <tt>config.action_cable.worker_pool_size</tt>.
       #
       # Using Active Record, Redis, etc within your channel actions means you'll get a separate connection from each thread in the worker pool.
       # Plan your deployment accordingly: 5 servers each running 5 Puma workers each running an 8-thread worker pool means at least 200 database

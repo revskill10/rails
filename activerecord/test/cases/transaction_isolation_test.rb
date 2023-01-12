@@ -1,7 +1,9 @@
-require 'cases/helper'
+# frozen_string_literal: true
 
-unless ActiveRecord::Base.connection.supports_transaction_isolation?
-  class TransactionIsolationUnsupportedTest < ActiveRecord::TestCase
+require "cases/helper"
+
+class TransactionIsolationUnsupportedTest < ActiveRecord::TestCase
+  unless ActiveRecord::Base.connection.supports_transaction_isolation? && !current_adapter?(:SQLite3Adapter)
     self.use_transactional_tests = false
 
     class Tag < ActiveRecord::Base
@@ -9,22 +11,22 @@ unless ActiveRecord::Base.connection.supports_transaction_isolation?
 
     test "setting the isolation level raises an error" do
       assert_raises(ActiveRecord::TransactionIsolationError) do
-        Tag.transaction(isolation: :serializable) { }
+        Tag.transaction(isolation: :serializable) { Tag.connection.materialize_transactions }
       end
     end
   end
 end
 
-if ActiveRecord::Base.connection.supports_transaction_isolation?
-  class TransactionIsolationTest < ActiveRecord::TestCase
+class TransactionIsolationTest < ActiveRecord::TestCase
+  if ActiveRecord::Base.connection.supports_transaction_isolation? && !current_adapter?(:SQLite3Adapter)
     self.use_transactional_tests = false
 
     class Tag < ActiveRecord::Base
-      self.table_name = 'tags'
+      self.table_name = "tags"
     end
 
     class Tag2 < ActiveRecord::Base
-      self.table_name = 'tags'
+      self.table_name = "tags"
     end
 
     setup do
@@ -63,18 +65,18 @@ if ActiveRecord::Base.connection.supports_transaction_isolation?
     # We are testing that a nonrepeatable read does not happen
     if ActiveRecord::Base.connection.transaction_isolation_levels.include?(:repeatable_read)
       test "repeatable read" do
-        tag = Tag.create(name: 'jon')
+        tag = Tag.create(name: "jon")
 
         Tag.transaction(isolation: :repeatable_read) do
           tag.reload
-          Tag2.find(tag.id).update(name: 'emily')
+          Tag2.find(tag.id).update(name: "emily")
 
           tag.reload
-          assert_equal 'jon', tag.name
+          assert_equal "jon", tag.name
         end
 
         tag.reload
-        assert_equal 'emily', tag.name
+        assert_equal "emily", tag.name
       end
     end
 

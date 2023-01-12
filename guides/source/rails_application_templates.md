@@ -1,9 +1,9 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Rails Application Templates
 ===========================
 
-Application templates are simple Ruby files containing DSL for adding gems/initializers etc. to your freshly created Rails project or an existing Rails project.
+Application templates are simple Ruby files containing DSL for adding gems, initializers, etc. to your freshly created Rails project or an existing Rails project.
 
 After reading this guide, you will know:
 
@@ -22,7 +22,7 @@ $ rails new blog -m ~/template.rb
 $ rails new blog -m http://example.com/template.rb
 ```
 
-You can use the `app:template` Rake task to apply templates to an existing Rails application. The location of the template needs to be passed in via the LOCATION environment variable. Again, this can either be path to a file or a URL.
+You can use the `app:template` rails command to apply templates to an existing Rails application. The location of the template needs to be passed in via the LOCATION environment variable. Again, this can either be path to a file or a URL.
 
 ```bash
 $ bin/rails app:template LOCATION=~/template.rb
@@ -63,7 +63,7 @@ gem "nokogiri"
 Please note that this will NOT install the gems for you and you will have to run `bundle install` to do that.
 
 ```bash
-bundle install
+$ bundle install
 ```
 
 ### gem_group(*names, &block)
@@ -82,10 +82,10 @@ end
 
 Adds the given source to the generated application's `Gemfile`.
 
-For example, if you need to source a gem from `"http://code.whytheluckystiff.net"`:
+For example, if you need to source a gem from `"http://gems.github.com"`:
 
 ```ruby
-add_source "http://code.whytheluckystiff.net"
+add_source "http://gems.github.com"
 ```
 
 If block is given, gem entries in block are wrapped into the source group.
@@ -177,22 +177,28 @@ run "rm README.rdoc"
 
 ### rails_command(command, options = {})
 
-Runs the supplied task in the Rails application. Let's say you want to migrate the database:
+Runs the supplied command in the Rails application. Let's say you want to migrate the database:
 
 ```ruby
 rails_command "db:migrate"
 ```
 
-You can also run tasks with a different Rails environment:
+You can also run commands with a different Rails environment:
 
 ```ruby
 rails_command "db:migrate", env: 'production'
 ```
 
-You can also run tasks as a super-user:
+You can also run commands as a super-user:
 
 ```ruby
 rails_command "log:clear", sudo: true
+```
+
+You can also run commands that should abort application generation if they fail:
+
+```ruby
+rails_command "db:migrate", abort_on_failure: true
 ```
 
 ### route(routing_code)
@@ -229,10 +235,10 @@ CODE
 
 ### yes?(question) or no?(question)
 
-These methods let you ask questions from templates and decide the flow based on the user's answer. Let's say you want to Freeze Rails only if the user wants to:
+These methods let you ask questions from templates and decide the flow based on the user's answer. Let's say you want to prompt the user to run migrations:
 
 ```ruby
-rails_command("rails:freeze:gems") if yes?("Freeze rails gems?")
+rails_command("db:migrate") if yes?("Run database migrations?")
 # no?(question) acts just the opposite.
 ```
 
@@ -249,7 +255,7 @@ git commit: "-a -m 'Initial commit'"
 ### after_bundle(&block)
 
 Registers a callback to be executed after the gems are bundled and binstubs
-are generated. Useful for all generated files to version control:
+are generated. Useful for adding generated files to version control:
 
 ```ruby
 after_bundle do
@@ -259,16 +265,16 @@ after_bundle do
 end
 ```
 
-The callbacks gets executed even if `--skip-bundle` and/or `--skip-spring` has
-been passed.
+The callbacks gets executed even if `--skip-bundle` has been passed.
 
 Advanced Usage
 --------------
 
 The application template is evaluated in the context of a
-`Rails::Generators::AppGenerator` instance. It uses the `apply` action
-provided by
-[Thor](https://github.com/erikhuda/thor/blob/master/lib/thor/actions.rb#L207).
+`Rails::Generators::AppGenerator` instance. It uses the
+[`apply`](https://www.rubydoc.info/gems/thor/Thor/Actions#apply-instance_method)
+action provided by Thor.
+
 This means you can extend and change the instance to match your needs.
 
 For example by overwriting the `source_paths` method to contain the
@@ -277,6 +283,6 @@ relative paths to your template's location.
 
 ```ruby
 def source_paths
-  [File.expand_path(File.dirname(__FILE__))]
+  [__dir__]
 end
 ```

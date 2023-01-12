@@ -1,6 +1,6 @@
-require 'concurrent/map'
-require 'action_view/dependency_tracker'
-require 'monitor'
+# frozen_string_literal: true
+
+require "action_view/dependency_tracker"
 
 module ActionView
   class Digestor
@@ -9,22 +9,27 @@ module ActionView
     class << self
       # Supported options:
       #
-      # * <tt>name</tt>   - Template name
-      # * <tt>finder</tt>  - An instance of <tt>ActionView::LookupContext</tt>
-      # * <tt>dependencies</tt>  - An array of dependent views
-      def digest(name:, finder:, dependencies: [])
-        dependencies ||= []
-        cache_key = [ name, finder.rendered_format, dependencies ].flatten.compact.join('.')
+      # * <tt>name</tt>         - Template name
+      # * <tt>format</tt>       - Template format
+      # * <tt>finder</tt>       - An instance of <tt>ActionView::LookupContext</tt>
+      # * <tt>dependencies</tt> - An array of dependent views
+      def digest(name:, format: nil, finder:, dependencies: nil)
+        if dependencies.nil? || dependencies.empty?
+          cache_key = "#{name}.#{format}"
+        else
+          dependencies_suffix = dependencies.flatten.tap(&:compact!).join(".")
+          cache_key = "#{name}.#{format}.#{dependencies_suffix}"
+        end
 
         # this is a correctly done double-checked locking idiom
         # (Concurrent::Map's lookups have volatile semantics)
         finder.digest_cache[cache_key] || @@digest_mutex.synchronize do
           finder.digest_cache.fetch(cache_key) do # re-check under lock
-            partial = name.include?("/_")
-            root = tree(name, finder, partial)
+            path = TemplatePath.parse(name)
+            root = tree(path.to_s, finder, path.partial?)
             dependencies.each do |injected_dep|
               root.children << Injected.new(injected_dep, nil, nil)
-            end
+            end if dependencies
             finder.digest_cache[cache_key] = root.digest(finder)
           end
         end
@@ -37,14 +42,11 @@ module ActionView
       # Create a dependency tree for template named +name+.
       def tree(name, finder, partial = false, seen = {})
         logical_name = name.gsub(%r|/_|, "/")
+        interpolated = name.include?("#")
 
-        options = {}
-        options[:formats] = [finder.rendered_format] if finder.rendered_format
+        path = TemplatePath.parse(name)
 
-        if finder.disable_cache { finder.exists?(logical_name, [], partial, [], options) }
-          template = finder.disable_cache { finder.find(logical_name, [], partial, [], options) }
-          finder.rendered_format ||= template.formats.first
-
+        if !interpolated && (template = find_template(finder, path.name, [path.prefix], partial, []))
           if node = seen[template.identifier] # handle cycles in the tree
             node
           else
@@ -57,11 +59,20 @@ module ActionView
             node
           end
         else
-          logger.error "  '#{name}' file doesn't exist, so no dependencies"
-          logger.error "  Couldn't find template for digesting: #{name}"
+          unless interpolated # Dynamic template partial names can never be tracked
+            logger.error "  Couldn't find template for digesting: #{name}"
+          end
+
           seen[name] ||= Missing.new(name, logical_name, nil)
         end
       end
+
+      private
+        def find_template(finder, name, prefixes, partial, keys)
+          finder.disable_cache do
+            finder.find_all(name, prefixes, partial, keys).first
+          end
+        end
     end
 
     class Node
@@ -80,7 +91,7 @@ module ActionView
       end
 
       def digest(finder, stack = [])
-        Digest::MD5.hexdigest("#{template.source}-#{dependency_digest(finder, stack)}")
+        ActiveSupport::Digest.hexdigest("#{template.source}-#{dependency_digest(finder, stack)}")
       end
 
       def dependency_digest(finder, stack)
@@ -104,7 +115,7 @@ module ActionView
     class Partial < Node; end
 
     class Missing < Node
-      def digest(finder, _ = []) '' end
+      def digest(finder, _ = []) "" end
     end
 
     class Injected < Node

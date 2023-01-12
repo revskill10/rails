@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Ruby on Rails 3.2 Release Notes
 ===============================
@@ -11,7 +11,7 @@ Highlights in Rails 3.2:
 * Tagged Logging
 
 These release notes cover only the major changes. To learn about various bug
-fixes and changes, please refer to the change logs or check out the [list of
+fixes and changes, please refer to the changelogs or check out the [list of
 commits](https://github.com/rails/rails/commits/3-2-stable) in the main Rails
 repository on GitHub.
 
@@ -30,13 +30,13 @@ TIP: Note that Ruby 1.8.7 p248 and p249 have marshalling bugs that crash Rails. 
 
 ### What to update in your apps
 
-* Update your Gemfile to depend on
+* Update your `Gemfile` to depend on
     * `rails = 3.2.0`
     * `sass-rails ~> 3.2.3`
     * `coffee-rails ~> 3.2.1`
     * `uglifier >= 1.0.3`
 
-* Rails 3.2 deprecates `vendor/plugins` and Rails 4.0 will remove them completely. You can start replacing these plugins by extracting them as gems and adding them in your Gemfile. If you choose not to make them gems, you can move them into, say, `lib/my_plugin/*` and add an appropriate initializer in `config/initializers/my_plugin.rb`.
+* Rails 3.2 deprecates `vendor/plugins` and Rails 4.0 will remove them completely. You can start replacing these plugins by extracting them as gems and adding them in your `Gemfile`. If you choose not to make them gems, you can move them into, say, `lib/my_plugin/*` and add an appropriate initializer in `config/initializers/my_plugin.rb`.
 
 * There are a couple of new configuration changes you'd want to add in `config/environments/development.rb`:
 
@@ -64,8 +64,8 @@ Replace the code beneath the comment in `script/rails` with the following conten
 ENGINE_ROOT = File.expand_path('../..', __FILE__)
 ENGINE_PATH = File.expand_path('../../lib/your_engine_name/engine', __FILE__)
 
-require 'rails/all'
-require 'rails/engine/commands'
+require "rails/all"
+require "rails/engine/commands"
 ```
 
 Creating a Rails 3.2 application
@@ -81,7 +81,7 @@ $ cd myapp
 
 Rails now uses a `Gemfile` in the application root to determine the gems you require for your application to start. This `Gemfile` is processed by the [Bundler](https://github.com/carlhuda/bundler) gem, which then installs all your dependencies. It can even install all the dependencies locally to your application so that it doesn't depend on the system gems.
 
-More information: [Bundler homepage](http://bundler.io/)
+More information: [Bundler homepage](https://bundler.io/)
 
 ### Living on the Edge
 
@@ -146,23 +146,23 @@ Railties
 
 * Add an alias `d` for `destroy`. This works for engines too.
 
-* Attributes on scaffold and model generators default to string. This allows the following: `rails g scaffold Post title body:text author`
+* Attributes on scaffold and model generators default to string. This allows the following: `bin/rails g scaffold Post title body:text author`
 
 * Allow scaffold/model/migration generators to accept "index" and "uniq" modifiers. For example,
 
-    ```ruby
-    rails g scaffold Post title:string:index author:uniq price:decimal{7,2}
+    ```bash
+    bin/rails g scaffold Post title:string:index author:uniq price:decimal{7,2}
     ```
 
     will create indexes for `title` and `author` with the latter being a unique index. Some types such as decimal accept custom options. In the example, `price` will be a decimal column with precision and scale set to 7 and 2 respectively.
 
-* Turn gem has been removed from default Gemfile.
+* Turn gem has been removed from default `Gemfile`.
 
 * Remove old plugin generator `rails generate plugin` in favor of `rails plugin new` command.
 
 * Remove old `config.paths.app.controller` API in favor of `config.paths["app/controller"]`.
 
-#### Deprecations
+### Deprecations
 
 * `Rails::Plugin` is deprecated and will be removed in Rails 4.0. Instead of adding plugins to `vendor/plugins` use gems or bundler with path or git dependencies.
 
@@ -192,7 +192,7 @@ Action Pack
 
     Rails will use `layouts/single_car` when a request comes in `:show` action, and use `layouts/application` (or `layouts/cars`, if exists) when a request comes in for any other actions.
 
-* `form_for` is changed to use `#{action}_#{as}` as the css class and id if `:as` option is provided. Earlier versions used `#{as}_#{action}`.
+* `form_for` is changed to use `#{action}_#{as}` as the CSS class and id if `:as` option is provided. Earlier versions used `#{as}_#{action}`.
 
 * `ActionController::ParamsWrapper` on Active Record models now only wrap `attr_accessible` attributes if they were set. If not, only the attributes returned by the class method `attribute_names` will be wrapped. This fixes the wrapping of nested attributes by adding them to `attr_accessible`.
 
@@ -295,7 +295,7 @@ Action Pack
     ```ruby
     @items.each do |item|
       content_tag_for(:li, item) do
-         Title: <%= item.title %>
+        Title: <%= item.title %>
       end
     end
     ```
@@ -312,7 +312,7 @@ Action Pack
 
 #### Deprecations
 
-* Passing formats or handlers to render :template and friends like `render :template => "foo.html.erb"` is deprecated. Instead, you can provide :handlers and :formats directly as options: ` render :template => "foo", :formats => [:html, :js], :handlers => :erb`.
+* Passing formats or handlers to render :template and friends like `render :template => "foo.html.erb"` is deprecated. Instead, you can provide :handlers and :formats directly as options: `render :template => "foo", :formats => [:html, :js], :handlers => :erb`.
 
 ### Sprockets
 
@@ -462,7 +462,6 @@ Active Record
     end
 
     Post.table_name # => "special_posts"
-
     ```
 
 Active Model

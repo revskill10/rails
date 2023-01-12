@@ -1,6 +1,7 @@
-require 'concurrent/map'
-require 'active_support/core_ext/array/prepend_and_append'
-require 'active_support/i18n'
+# frozen_string_literal: true
+
+require "concurrent/map"
+require "active_support/i18n"
 
 module ActiveSupport
   module Inflector
@@ -15,13 +16,13 @@ module ActiveSupport
     #     inflect.plural /^(ox)$/i, '\1\2en'
     #     inflect.singular /^(ox)en/i, '\1'
     #
-    #     inflect.irregular 'octopus', 'octopi'
+    #     inflect.irregular 'cactus', 'cacti'
     #
     #     inflect.uncountable 'equipment'
     #   end
     #
     # New rules are added at the top. So in the example above, the irregular
-    # rule for octopus will now be the first of the pluralization and
+    # rule for cactus will now be the first of the pluralization and
     # singularization rules that is runs. This guarantees that your rules run
     # before any of the rules that may already have been loaded.
     class Inflections
@@ -43,13 +44,14 @@ module ActiveSupport
         end
 
         def add(words)
-          self.concat(words.flatten.map(&:downcase))
-          @regex_array += self.map {|word|  to_regex(word) }
+          words = words.flatten.map(&:downcase)
+          concat(words)
+          @regex_array += words.map { |word| to_regex(word) }
           self
         end
 
         def uncountable?(str)
-          @regex_array.any? { |regex| regex === str }
+          @regex_array.any? { |regex| regex.match? str }
         end
 
         private
@@ -62,17 +64,28 @@ module ActiveSupport
         @__instance__[locale] ||= new
       end
 
-      attr_reader :plurals, :singulars, :uncountables, :humans, :acronyms, :acronym_regex
+      def self.instance_or_fallback(locale)
+        I18n.fallbacks[locale].each do |k|
+          return @__instance__[k] if @__instance__.key?(k)
+        end
+        instance(locale)
+      end
+
+      attr_reader :plurals, :singulars, :uncountables, :humans, :acronyms
+
+      attr_reader :acronyms_camelize_regex, :acronyms_underscore_regex # :nodoc:
 
       def initialize
-        @plurals, @singulars, @uncountables, @humans, @acronyms, @acronym_regex = [], [], Uncountables.new, [], {}, /(?=a)b/
+        @plurals, @singulars, @uncountables, @humans, @acronyms = [], [], Uncountables.new, [], {}
+        define_acronym_regex_patterns
       end
 
       # Private, for the test suite.
       def initialize_dup(orig) # :nodoc:
-        %w(plurals singulars uncountables humans acronyms acronym_regex).each do |scope|
-          instance_variable_set("@#{scope}", orig.send(scope).dup)
+        %w(plurals singulars uncountables humans acronyms).each do |scope|
+          instance_variable_set("@#{scope}", orig.public_send(scope).dup)
         end
+        define_acronym_regex_patterns
       end
 
       # Specifies a new acronym. An acronym must be specified as it will appear
@@ -126,7 +139,7 @@ module ActiveSupport
       #   camelize 'mcdonald'   # => 'McDonald'
       def acronym(word)
         @acronyms[word.downcase] = word
-        @acronym_regex = /#{@acronyms.values.join("|")}/
+        define_acronym_regex_patterns
       end
 
       # Specifies a new pluralization rule and its replacement. The rule can
@@ -154,7 +167,7 @@ module ActiveSupport
       # regular expressions. You simply pass the irregular in singular and
       # plural form.
       #
-      #   irregular 'octopus', 'octopi'
+      #   irregular 'cactus', 'cacti'
       #   irregular 'person', 'people'
       def irregular(singular, plural)
         @uncountables.delete(singular)
@@ -209,18 +222,34 @@ module ActiveSupport
       # Clears the loaded inflections within a given scope (default is
       # <tt>:all</tt>). Give the scope as a symbol of the inflection type, the
       # options are: <tt>:plurals</tt>, <tt>:singulars</tt>, <tt>:uncountables</tt>,
-      # <tt>:humans</tt>.
+      # <tt>:humans</tt>, <tt>:acronyms</tt>.
       #
       #   clear :all
       #   clear :plurals
       def clear(scope = :all)
         case scope
-          when :all
-            @plurals, @singulars, @uncountables, @humans = [], [], Uncountables.new, []
-          else
-            instance_variable_set "@#{scope}", []
+        when :all
+          clear(:acronyms)
+          clear(:plurals)
+          clear(:singulars)
+          clear(:uncountables)
+          clear(:humans)
+        when :acronyms
+          @acronyms = {}
+          define_acronym_regex_patterns
+        when :uncountables
+          @uncountables = Uncountables.new
+        when :plurals, :singulars, :humans
+          instance_variable_set "@#{scope}", []
         end
       end
+
+      private
+        def define_acronym_regex_patterns
+          @acronym_regex             = @acronyms.empty? ? /(?=a)b/ : /#{@acronyms.values.join("|")}/
+          @acronyms_camelize_regex   = /^(?:#{@acronym_regex}(?=\b|[A-Z_])|\w)/
+          @acronyms_underscore_regex = /(?:(?<=([A-Za-z\d]))|\b)(#{@acronym_regex})(?=\b|[^a-z])/
+        end
     end
 
     # Yields a singleton instance of Inflector::Inflections so you can specify
@@ -235,7 +264,7 @@ module ActiveSupport
       if block_given?
         yield Inflections.instance(locale)
       else
-        Inflections.instance(locale)
+        Inflections.instance_or_fallback(locale)
       end
     end
   end

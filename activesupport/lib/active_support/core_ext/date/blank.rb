@@ -1,6 +1,8 @@
-require 'date'
+# frozen_string_literal: true
 
-class Date #:nodoc:
+require "date"
+
+class Date # :nodoc:
   # No Date is blank:
   #
   #   Date.today.blank? # => false

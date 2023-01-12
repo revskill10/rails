@@ -1,14 +1,18 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module ConnectionAdapters
     module PostgreSQL
       module OID # :nodoc:
         class Array < Type::Value # :nodoc:
-          include Type::Helpers::Mutable
+          include ActiveModel::Type::Helpers::Mutable
+
+          Data = Struct.new(:encoder, :values) # :nodoc:
 
           attr_reader :subtype, :delimiter
-          delegate :type, :user_input_in_time_zone, :limit, to: :subtype
+          delegate :type, :user_input_in_time_zone, :limit, :precision, :scale, to: :subtype
 
-          def initialize(subtype, delimiter = ',')
+          def initialize(subtype, delimiter = ",")
             @subtype = subtype
             @delimiter = delimiter
 
@@ -17,8 +21,11 @@ module ActiveRecord
           end
 
           def deserialize(value)
-            if value.is_a?(::String)
+            case value
+            when ::String
               type_cast_array(@pg_decoder.decode(value), :deserialize)
+            when Data
+              type_cast_array(value.values, :deserialize)
             else
               super
             end
@@ -26,14 +33,21 @@ module ActiveRecord
 
           def cast(value)
             if value.is_a?(::String)
-              value = @pg_decoder.decode(value)
+              value = begin
+                @pg_decoder.decode(value)
+              rescue TypeError
+                # malformed array string is treated as [], will raise in PG 2.0 gem
+                # this keeps a consistent implementation
+                []
+              end
             end
             type_cast_array(value, :cast)
           end
 
           def serialize(value)
             if value.is_a?(::Array)
-              @pg_encoder.encode(type_cast_array(value, :serialize))
+              casted_values = type_cast_array(value, :serialize)
+              Data.new(@pg_encoder, casted_values)
             else
               super
             end
@@ -51,18 +65,25 @@ module ActiveRecord
           end
 
           def map(value, &block)
-            value.map(&block)
+            value.map { |v| subtype.map(v, &block) }
+          end
+
+          def changed_in_place?(raw_old_value, new_value)
+            deserialize(raw_old_value) != new_value
+          end
+
+          def force_equality?(value)
+            value.is_a?(::Array)
           end
 
           private
-
-          def type_cast_array(value, method)
-            if value.is_a?(::Array)
-              value.map { |item| type_cast_array(item, method) }
-            else
-              @subtype.public_send(method, value)
+            def type_cast_array(value, method)
+              if value.is_a?(::Array)
+                value.map { |item| type_cast_array(item, method) }
+              else
+                @subtype.public_send(method, value)
+              end
             end
-          end
         end
       end
     end

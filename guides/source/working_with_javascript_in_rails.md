@@ -1,409 +1,302 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Working with JavaScript in Rails
 ================================
 
-This guide covers the built-in Ajax/JavaScript functionality of Rails (and
-more); it will enable you to create rich and dynamic Ajax applications with
-ease!
+This guide covers the options for integrating JavaScript functionality into your Rails application,
+including the options you have for using external JavaScript packages and how to use Turbo with
+Rails.
 
 After reading this guide, you will know:
 
-* The basics of Ajax.
-* Unobtrusive JavaScript.
-* How Rails' built-in helpers assist you.
-* How to handle Ajax on the server side.
-* The Turbolinks gem.
+* How to use Rails without the need for a Node.js, Yarn, or a JavaScript bundler.
+* How to create a new Rails application using import maps, esbuild, rollup, or webpack to bundle
+your JavaScript.
+* What Turbo is, and how to use it.
+* How to use the Turbo HTML helpers provided by Rails.
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
-An Introduction to Ajax
-------------------------
+Import Maps
+-----------
 
-In order to understand Ajax, you must first understand what a web browser does
-normally.
+[Import maps](https://github.com/rails/importmap-rails) let you import JavaScript modules using
+logical names that map to versioned files directly from the browser. Import maps are the default
+from Rails 7, allowing anyone to build modern JavaScript applications using most NPM packages
+without the need for transpiling or bundling.
 
-When you type `http://localhost:3000` into your browser's address bar and hit
-'Go,' the browser (your 'client') makes a request to the server. It parses the
-response, then fetches all associated assets, like JavaScript files,
-stylesheets and images. It then assembles the page. If you click a link, it
-does the same process: fetch the page, fetch the assets, put it all together,
-show you the results. This is called the 'request response cycle.'
+Applications using import maps do not need [Node.js](https://nodejs.org/en/) or
+[Yarn](https://yarnpkg.com/) to function. If you plan to use Rails with `importmap-rails` to
+manage your JavaScript dependencies, there is no need to install Node.js or Yarn.
 
-JavaScript can also make requests to the server, and parse the response. It
-also has the ability to update information on the page. Combining these two
-powers, a JavaScript writer can make a web page that can update just parts of
-itself, without needing to get the full page data from the server. This is a
-powerful technique that we call Ajax.
+When using import maps, no separate build process is required, just start your server with
+`bin/rails server` and you are good to go.
 
-Rails ships with CoffeeScript by default, and so the rest of the examples
-in this guide will be in CoffeeScript. All of these lessons, of course, apply
-to vanilla JavaScript as well.
+### Installing importmap-rails
 
-As an example, here's some CoffeeScript code that makes an Ajax request using
-the jQuery library:
+Importmap for Rails is automatically included in Rails 7+ for new applications, but you can also install it manually in existing applications:
 
-```coffeescript
-$.ajax(url: "/test").done (html) ->
-  $("#results").append html
+```bash
+$ bin/bundle add importmap-rails
 ```
 
-This code fetches data from "/test", and then appends the result to the `div`
-with an id of `results`.
+Run the install task:
 
-Rails provides quite a bit of built-in support for building web pages with this
-technique. You rarely have to write this code yourself. The rest of this guide
-will show you how Rails can help you write websites in this way, but it's
-all built on top of this fairly simple technique.
-
-Unobtrusive JavaScript
--------------------------------------
-
-Rails uses a technique called "Unobtrusive JavaScript" to handle attaching
-JavaScript to the DOM. This is generally considered to be a best-practice
-within the frontend community, but you may occasionally read tutorials that
-demonstrate other ways.
-
-Here's the simplest way to write JavaScript. You may see it referred to as
-'inline JavaScript':
-
-```html
-<a href="#" onclick="this.style.backgroundColor='#990000'">Paint it red</a>
-```
-When clicked, the link background will become red. Here's the problem: what
-happens when we have lots of JavaScript we want to execute on a click?
-
-```html
-<a href="#" onclick="this.style.backgroundColor='#009900';this.style.color='#FFFFFF';">Paint it green</a>
+```bash
+$ bin/rails importmap:install
 ```
 
-Awkward, right? We could pull the function definition out of the click handler,
-and turn it into CoffeeScript:
+### Adding NPM Packages with importmap-rails
 
-```coffeescript
-@paintIt = (element, backgroundColor, textColor) ->
-  element.style.backgroundColor = backgroundColor
-  if textColor?
-    element.style.color = textColor
+To add new packages to your import map-powered application, run the `bin/importmap pin` command
+from your terminal:
+
+```bash
+$ bin/importmap pin react react-dom
 ```
 
-And then on our page:
+Then, import the package into `application.js` as usual:
 
-```html
-<a href="#" onclick="paintIt(this, '#990000')">Paint it red</a>
+```javascript
+import React from "react"
+import ReactDOM from "react-dom"
 ```
 
-That's a little bit better, but what about multiple links that have the same
-effect?
+Adding NPM Packages with JavaScript Bundlers
+--------
 
-```html
-<a href="#" onclick="paintIt(this, '#990000')">Paint it red</a>
-<a href="#" onclick="paintIt(this, '#009900', '#FFFFFF')">Paint it green</a>
-<a href="#" onclick="paintIt(this, '#000099', '#FFFFFF')">Paint it blue</a>
+Import maps are the default for new Rails applications, but if you prefer traditional JavaScript
+bundling, you can create new Rails applications with your choice of
+[esbuild](https://esbuild.github.io/), [webpack](https://webpack.js.org/), or
+[rollup.js](https://rollupjs.org/guide/en/).
+
+To use a bundler instead of import maps in a new Rails application, pass the `—javascript` or `-j`
+option to `rails new`:
+
+```bash
+$ rails new my_new_app --javascript=webpack
+OR
+$ rails new my_new_app -j webpack
 ```
 
-Not very DRY, eh? We can fix this by using events instead. We'll add a `data-*`
-attribute to our link, and then bind a handler to the click event of every link
-that has that attribute:
+These bundling options each come with a simple configuration and integration with the asset
+pipeline via the [jsbundling-rails](https://github.com/rails/jsbundling-rails) gem.
 
-```coffeescript
-@paintIt = (element, backgroundColor, textColor) ->
-  element.style.backgroundColor = backgroundColor
-  if textColor?
-    element.style.color = textColor
+When using a bundling option, use `bin/dev` to start the Rails server and build JavaScript for
+development.
 
-$ ->
-  $("a[data-background-color]").click (e) ->
-    e.preventDefault()
+### Installing Node.js and Yarn
 
-    backgroundColor = $(this).data("background-color")
-    textColor = $(this).data("text-color")
-    paintIt(this, backgroundColor, textColor)
-```
-```html
-<a href="#" data-background-color="#990000">Paint it red</a>
-<a href="#" data-background-color="#009900" data-text-color="#FFFFFF">Paint it green</a>
-<a href="#" data-background-color="#000099" data-text-color="#FFFFFF">Paint it blue</a>
+If you are using a JavaScript bundler in your Rails application, Node.js and Yarn must be
+installed.
+
+Find the installation instructions at the [Node.js website](https://nodejs.org/en/download/) and
+verify it’s installed correctly with the following command:
+
+```bash
+$ node --version
 ```
 
-We call this 'unobtrusive' JavaScript because we're no longer mixing our
-JavaScript into our HTML. We've properly separated our concerns, making future
-change easy. We can easily add behavior to any link by adding the data
-attribute. We can run all of our JavaScript through a minimizer and
-concatenator. We can serve our entire JavaScript bundle on every page, which
-means that it'll get downloaded on the first page load and then be cached on
-every page after that. Lots of little benefits really add up.
+The version of your Node.js runtime should be printed out. Make sure it’s greater than `8.16.0`.
 
-The Rails team strongly encourages you to write your CoffeeScript (and
-JavaScript) in this style, and you can expect that many libraries will also
-follow this pattern.
+To install Yarn, follow the installation instructions at the
+[Yarn website](https://classic.yarnpkg.com/en/docs/install). Running this command should print out
+the Yarn version:
 
-Built-in Helpers
-----------------------
+```bash
+$ yarn --version
+```
 
-Rails provides a bunch of view helper methods written in Ruby to assist you
-in generating HTML. Sometimes, you want to add a little Ajax to those elements,
-and Rails has got your back in those cases.
+If it says something like `1.22.0`, Yarn has been installed correctly.
 
-Because of Unobtrusive JavaScript, the Rails "Ajax helpers" are actually in two
-parts: the JavaScript half and the Ruby half.
+Choosing Between Import Maps and a JavaScript Bundler
+-----------------------------------------------------
 
-Unless you have disabled the Asset Pipeline,
-[rails.js](https://github.com/rails/jquery-ujs/blob/master/src/rails.js)
-provides the JavaScript half, and the regular Ruby view helpers add appropriate
-tags to your DOM.
+When you create a new Rails application, you will need to choose between import maps and a
+JavaScript bundling solution. Every application has different requirements, and you should
+consider your requirements carefully before choosing a JavaScript option, as migrating from one
+option to another may be time-consuming for large, complex applications.
 
-### form_for
+Import maps are the default option because the Rails team believes in import maps' potential for
+reducing complexity, improving developer experience, and delivering performance gains.
 
-[`form_for`](http://api.rubyonrails.org/classes/ActionView/Helpers/FormHelper.html#method-i-form_for)
-is a helper that assists with writing forms. `form_for` takes a `:remote`
-option. It works like this:
+For many applications, especially those that rely primarily on the [Hotwire](https://hotwired.dev/)
+stack for their JavaScript needs, import maps will be the right option for the long term. You
+can read more about the reasoning behind making import maps the default in Rails 7
+[here](https://world.hey.com/dhh/rails-7-will-have-three-great-answers-to-javascript-in-2021-8d68191b).
+
+Other applications may still need a traditional JavaScript bundler. Requirements that indicate
+that you should choose a traditional bundler include:
+
+* If your code requires a transpilation step, such as JSX or TypeScript.
+* If you need to use JavaScript libraries that include CSS or otherwise rely on
+[Webpack loaders](https://webpack.js.org/loaders/).
+* If you are absolutely sure that you need
+[tree-shaking](https://webpack.js.org/guides/tree-shaking/).
+* If you will install Bootstrap, Bulma, PostCSS, or Dart CSS through the
+[cssbundling-rails gem](https://github.com/rails/cssbundling-rails). All options provided by this
+gem except Tailwind will automatically install `esbuild` for you if you do not specify a different
+option in `rails new`.
+
+Turbo
+-----
+
+Whether you choose import maps or a traditional bundler, Rails ships with
+[Turbo](https://turbo.hotwired.dev/) to speed up your application while dramatically reducing the
+amount of JavaScript that you will need to write.
+
+Turbo lets your server deliver HTML directly as an alternative to the prevailing front-end
+frameworks that reduce the server-side of your Rails application to little more than a JSON API.
+
+### Turbo Drive
+
+[Turbo Drive](https://turbo.hotwired.dev/handbook/drive) speeds up page loads by avoiding full-page
+teardowns and rebuilds on every navigation request. Turbo Drive is an improvement on and
+replacement for Turbolinks.
+
+### Turbo Frames
+
+[Turbo Frames](https://turbo.hotwired.dev/handbook/frames) allow predefined parts of a page to be
+updated on request, without impacting the rest of the page’s content.
+
+You can use Turbo Frames to build in-place editing without any custom JavaScript, lazy load
+content, and create server-rendered, tabbed interfaces with ease.
+
+Rails provides HTML helpers to simplify the use of Turbo Frames through the
+[turbo-rails](https://github.com/hotwired/turbo-rails) gem.
+
+Using this gem, you can add a Turbo Frame to your application with the `turbo_frame_tag` helper
+like this:
 
 ```erb
-<%= form_for(@article, remote: true) do |f| %>
-  ...
+<%= turbo_frame_tag dom_id(post) do %>
+  <div>
+     <%= link_to post.title, post_path(path) %>
+  </div>
 <% end %>
 ```
 
-This will generate the following HTML:
+### Turbo Streams
 
-```html
-<form accept-charset="UTF-8" action="/articles" class="new_article" data-remote="true" id="new_article" method="post">
-  ...
-</form>
-```
+[Turbo Streams](https://turbo.hotwired.dev/handbook/streams) deliver page changes as fragments of
+HTML wrapped in self-executing `<turbo-stream>` elements. Turbo Streams allow you to broadcast
+changes made by other users over WebSockets and update pieces of a page after a form submission
+without requiring a full page load.
 
-Note the `data-remote="true"`. Now, the form will be submitted by Ajax rather
-than by the browser's normal submit mechanism.
+Rails provides HTML and server-side helpers to simplify the use of Turbo Streams through the
+[turbo-rails](https://github.com/hotwired/turbo-rails) gem.
 
-You probably don't want to just sit there with a filled out `<form>`, though.
-You probably want to do something upon a successful submission. To do that,
-bind to the `ajax:success` event. On failure, use `ajax:error`. Check it out:
-
-```coffeescript
-$(document).ready ->
-  $("#new_article").on("ajax:success", (e, data, status, xhr) ->
-    $("#new_article").append xhr.responseText
-  ).on "ajax:error", (e, xhr, status, error) ->
-    $("#new_article").append "<p>ERROR</p>"
-```
-
-Obviously, you'll want to be a bit more sophisticated than that, but it's a
-start. You can see more about the events [in the jquery-ujs wiki](https://github.com/rails/jquery-ujs/wiki/ajax).
-
-### form_tag
-
-[`form_tag`](http://api.rubyonrails.org/classes/ActionView/Helpers/FormTagHelper.html#method-i-form_tag)
-is very similar to `form_for`. It has a `:remote` option that you can use like
-this:
-
-```erb
-<%= form_tag('/articles', remote: true) do %>
-  ...
-<% end %>
-```
-
-This will generate the following HTML:
-
-```html
-<form accept-charset="UTF-8" action="/articles" data-remote="true" method="post">
-  ...
-</form>
-```
-
-Everything else is the same as `form_for`. See its documentation for full
-details.
-
-### link_to
-
-[`link_to`](http://api.rubyonrails.org/classes/ActionView/Helpers/UrlHelper.html#method-i-link_to)
-is a helper that assists with generating links. It has a `:remote` option you
-can use like this:
-
-```erb
-<%= link_to "an article", @article, remote: true %>
-```
-
-which generates
-
-```html
-<a href="/articles/1" data-remote="true">an article</a>
-```
-
-You can bind to the same Ajax events as `form_for`. Here's an example. Let's
-assume that we have a list of articles that can be deleted with just one
-click. We would generate some HTML like this:
-
-```erb
-<%= link_to "Delete article", @article, remote: true, method: :delete %>
-```
-
-and write some CoffeeScript like this:
-
-```coffeescript
-$ ->
-  $("a[data-remote]").on "ajax:success", (e, data, status, xhr) ->
-    alert "The article was deleted."
-```
-
-### button_to
-
-[`button_to`](http://api.rubyonrails.org/classes/ActionView/Helpers/UrlHelper.html#method-i-button_to) is a helper that helps you create buttons. It has a `:remote` option that you can call like this:
-
-```erb
-<%= button_to "An article", @article, remote: true %>
-```
-
-this generates
-
-```html
-<form action="/articles/1" class="button_to" data-remote="true" method="post">
-  <input type="submit" value="An article" />
-</form>
-```
-
-Since it's just a `<form>`, all of the information on `form_for` also applies.
-
-Server-Side Concerns
---------------------
-
-Ajax isn't just client-side, you also need to do some work on the server
-side to support it. Often, people like their Ajax requests to return JSON
-rather than HTML. Let's discuss what it takes to make that happen.
-
-### A Simple Example
-
-Imagine you have a series of users that you would like to display and provide a
-form on that same page to create a new user. The index action of your
-controller looks like this:
+Using this gem, you can render Turbo Streams from a controller action:
 
 ```ruby
-class UsersController < ApplicationController
-  def index
-    @users = User.all
-    @user = User.new
-  end
-  # ...
-```
+def create
+  @post = Post.new(post_params)
 
-The index view (`app/views/users/index.html.erb`) contains:
-
-```erb
-<b>Users</b>
-
-<ul id="users">
-<%= render @users %>
-</ul>
-
-<br>
-
-<%= form_for(@user, remote: true) do |f| %>
-  <%= f.label :name %><br>
-  <%= f.text_field :name %>
-  <%= f.submit %>
-<% end %>
-```
-
-The `app/views/users/_user.html.erb` partial contains the following:
-
-```erb
-<li><%= user.name %></li>
-```
-
-The top portion of the index page displays the users. The bottom portion
-provides a form to create a new user.
-
-The bottom form will call the `create` action on the `UsersController`. Because
-the form's remote option is set to true, the request will be posted to the
-`UsersController` as an Ajax request, looking for JavaScript. In order to
-serve that request, the `create` action of your controller would look like
-this:
-
-```ruby
-  # app/controllers/users_controller.rb
-  # ......
-  def create
-    @user = User.new(params[:user])
-
-    respond_to do |format|
-      if @user.save
-        format.html { redirect_to @user, notice: 'User was successfully created.' }
-        format.js
-        format.json { render json: @user, status: :created, location: @user }
-      else
-        format.html { render action: "new" }
-        format.json { render json: @user.errors, status: :unprocessable_entity }
-      end
+  respond_to do |format|
+    if @post.save
+      format.turbo_stream
+    else
+      format.html { render :new, status: :unprocessable_entity }
     end
   end
+end
 ```
 
-Notice the format.js in the `respond_to` block; that allows the controller to
-respond to your Ajax request. You then have a corresponding
-`app/views/users/create.js.erb` view file that generates the actual JavaScript
-code that will be sent and executed on the client side.
+Rails will automatically look for a `.turbo_stream.erb` view file and render that view when found.
+
+Turbo Stream responses can also be rendered inline in the controller action:
+
+```ruby
+def create
+  @post = Post.new(post_params)
+
+  respond_to do |format|
+    if @post.save
+      format.turbo_stream { render turbo_stream: turbo_stream.prepend('posts', partial: 'post') }
+    else
+      format.html { render :new, status: :unprocessable_entity }
+    end
+  end
+end
+```
+
+Finally, Turbo Streams can be initiated from a model or a background job using built-in helpers.
+These broadcasts can be used to update content via a WebSocket connection to all users, keeping
+page content fresh and bringing your application to life.
+
+To broadcast a Turbo Stream from a model combine a model callback like this:
+
+```ruby
+class Post < ApplicationRecord
+  after_create_commit { broadcast_append_to('posts') }
+end
+```
+
+With a WebSocket connection set up on the page that should receive the updates like this:
 
 ```erb
-$("<%= escape_javascript(render @user) %>").appendTo("#users");
+<%= turbo_stream_from "posts" %>
 ```
 
-Turbolinks
-----------
+Replacements for Rails/UJS Functionality
+----------------------------------------
 
-Rails ships with the [Turbolinks library](https://github.com/turbolinks/turbolinks),
-which uses Ajax to speed up page rendering in most applications.
+Rails 6 shipped with a tool called UJS that allows developers to override the method of `<a>` tags
+to perform non-GET requests after a hyperlink click and to add confirmation dialogs before
+executing an action. This was the default before Rails 7, but it is now recommended to use Turbo
+instead.
 
-### How Turbolinks Works
+### Method
 
-Turbolinks attaches a click handler to all `<a>` on the page. If your browser
-supports
-[PushState](https://developer.mozilla.org/en-US/docs/Web/Guide/API/DOM/Manipulating_the_browser_history#The_pushState%28%29_method),
-Turbolinks will make an Ajax request for the page, parse the response, and
-replace the entire `<body>` of the page with the `<body>` of the response. It
-will then use PushState to change the URL to the correct one, preserving
-refresh semantics and giving you pretty URLs.
+Clicking links always results in an HTTP GET request. If your application is
+[RESTful](https://en.wikipedia.org/wiki/Representational_State_Transfer), some links are in fact
+actions that change data on the server, and should be performed with non-GET requests. This
+attribute allows marking up such links with an explicit method such as "post", "put", or "delete".
 
-The only thing you have to do to enable Turbolinks is have it in your Gemfile,
-and put `//= require turbolinks` in your JavaScript manifest, which is usually
-`app/assets/javascripts/application.js`.
+Turbo will scan `<a>` tags in your application for the `turbo-method` data attribute and use the
+specified method when present, overriding the default GET action.
 
-If you want to disable Turbolinks for certain links, add a `data-turbolinks="false"`
-attribute to the tag:
+For example:
+
+```erb
+<%= link_to "Delete post", post_path(post), data: { turbo_method: "delete" } %>
+```
+
+This generates:
 
 ```html
-<a href="..." data-turbolinks="false">No turbolinks here</a>.
+<a data-turbo-method="delete" href="...">Delete post</a>
 ```
 
-### Page Change Events
+An alternative to changing the method of a link with `data-turbo-method` is to use Rails
+`button_to` helper. For accessibility reasons, actual buttons and forms are preferable for any
+non-GET action.
 
-When writing CoffeeScript, you'll often want to do some sort of processing upon
-page load. With jQuery, you'd write something like this:
+### Confirmations
 
-```coffeescript
-$(document).ready ->
-  alert "page has loaded!"
+You can ask for an extra confirmation from the user by adding a `data-turbo-confirm`
+attribute on links and forms. On link click or form submit, the user will be
+presented with a JavaScript `confirm()` dialog containing the attribute's text.
+If the user chooses to cancel, the action doesn't take place.
+
+For example, with the `link_to` helper:
+
+```erb
+<%= link_to "Delete post", post_path(post), data: { turbo_method: "delete", turbo_confirm: "Are you sure?" } %>
 ```
 
-However, because Turbolinks overrides the normal page loading process, the
-event that this relies on will not be fired. If you have code that looks like
-this, you must change your code to do this instead:
+Which generates:
 
-```coffeescript
-$(document).on "turbolinks:load", ->
-  alert "page has loaded!"
+```html
+<a href="..." data-turbo-confirm="Are you sure?" data-turbo-method="delete">Delete post</a>
 ```
 
-For more details, including other events you can bind to, check out [the
-Turbolinks
-README](https://github.com/turbolinks/turbolinks/blob/master/README.md).
+When the user clicks on the "Delete post" link, they will be presented with an
+"Are you sure?" confirmation dialog.
 
-Other Resources
----------------
+The attribute can also be used with the `button_to` helper, however it must be
+added to the form that the `button_to` helper renders internally:
 
-Here are some helpful links to help you learn even more:
-
-* [jquery-ujs wiki](https://github.com/rails/jquery-ujs/wiki)
-* [jquery-ujs list of external articles](https://github.com/rails/jquery-ujs/wiki/External-articles)
-* [Rails 3 Remote Links and Forms: A Definitive Guide](http://www.alfajango.com/blog/rails-3-remote-links-and-forms/)
-* [Railscasts: Unobtrusive JavaScript](http://railscasts.com/episodes/205-unobtrusive-javascript)
-* [Railscasts: Turbolinks](http://railscasts.com/episodes/390-turbolinks)
+```erb
+<%= button_to "Delete post", post, method: :delete, form: { data: { turbo_confirm: "Are you sure?" } } %>
+```

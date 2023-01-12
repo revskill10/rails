@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
 
 class OldContentTypeController < ActionController::Base
   # :ported:
@@ -14,7 +16,7 @@ class OldContentTypeController < ActionController::Base
 
   # :ported:
   def render_content_type_from_render
-    render body: "hello world!", :content_type => Mime[:rss]
+    render body: "hello world!", content_type: Mime[:rss]
   end
 
   # :ported:
@@ -37,7 +39,7 @@ class OldContentTypeController < ActionController::Base
 
   def render_change_for_builder
     response.content_type = Mime[:html]
-    render :action => "render_default_for_builder"
+    render action: "render_default_for_builder"
   end
 
   def render_default_content_types_for_respond_to
@@ -47,6 +49,11 @@ class OldContentTypeController < ActionController::Base
       format.js   { render body: "hello world!" }
       format.rss  { render body: "hello world!", content_type: Mime[:xml] }
     end
+  end
+
+  def render_content_type_with_charset
+    response.content_type = "text/html; fragment; charset=utf-16"
+    render body: "hello world!"
   end
 end
 
@@ -64,80 +71,85 @@ class ContentTypeTest < ActionController::TestCase
   def test_render_defaults
     get :render_defaults
     assert_equal "utf-8", @response.charset
-    assert_equal Mime[:text], @response.content_type
+    assert_equal Mime[:text], @response.media_type
   end
 
   def test_render_changed_charset_default
     with_default_charset "utf-16" do
       get :render_defaults
       assert_equal "utf-16", @response.charset
-      assert_equal Mime[:text], @response.content_type
+      assert_equal Mime[:text], @response.media_type
     end
   end
 
   # :ported:
   def test_content_type_from_body
     get :render_content_type_from_body
-    assert_equal Mime[:rss], @response.content_type
+    assert_equal Mime[:rss], @response.media_type
     assert_equal "utf-8", @response.charset
   end
 
   # :ported:
   def test_content_type_from_render
     get :render_content_type_from_render
-    assert_equal Mime[:rss], @response.content_type
+    assert_equal Mime[:rss], @response.media_type
     assert_equal "utf-8", @response.charset
   end
 
   # :ported:
   def test_charset_from_body
     get :render_charset_from_body
-    assert_equal Mime[:text], @response.content_type
+    assert_equal Mime[:text], @response.media_type
     assert_equal "utf-16", @response.charset
   end
 
   # :ported:
   def test_nil_charset_from_body
     get :render_nil_charset_from_body
-    assert_equal Mime[:text], @response.content_type
+    assert_equal Mime[:text], @response.media_type
     assert_equal "utf-8", @response.charset, @response.headers.inspect
   end
 
   def test_nil_default_for_erb
     with_default_charset nil do
       get :render_default_for_erb
-      assert_equal Mime[:html], @response.content_type
+      assert_equal Mime[:html], @response.media_type
       assert_nil @response.charset, @response.headers.inspect
     end
   end
 
   def test_default_for_erb
     get :render_default_for_erb
-    assert_equal Mime[:html], @response.content_type
+    assert_equal Mime[:html], @response.media_type
     assert_equal "utf-8", @response.charset
   end
 
   def test_default_for_builder
     get :render_default_for_builder
-    assert_equal Mime[:xml], @response.content_type
+    assert_equal Mime[:xml], @response.media_type
     assert_equal "utf-8", @response.charset
   end
 
   def test_change_for_builder
     get :render_change_for_builder
-    assert_equal Mime[:html], @response.content_type
+    assert_equal Mime[:html], @response.media_type
     assert_equal "utf-8", @response.charset
   end
 
-  private
-
-  def with_default_charset(charset)
-    old_default_charset = ActionDispatch::Response.default_charset
-    ActionDispatch::Response.default_charset = charset
-    yield
-  ensure
-    ActionDispatch::Response.default_charset = old_default_charset
+  def test_content_type_with_charset
+    get :render_content_type_with_charset
+    assert_equal "text/html; fragment", @response.media_type
+    assert_equal "utf-16", @response.charset
   end
+
+  private
+    def with_default_charset(charset)
+      old_default_charset = ActionDispatch::Response.default_charset
+      ActionDispatch::Response.default_charset = charset
+      yield
+    ensure
+      ActionDispatch::Response.default_charset = old_default_charset
+    end
 end
 
 class AcceptBasedContentTypeTest < ActionController::TestCase
@@ -146,22 +158,22 @@ class AcceptBasedContentTypeTest < ActionController::TestCase
   def test_render_default_content_types_for_respond_to
     @request.accept = Mime[:html].to_s
     get :render_default_content_types_for_respond_to
-    assert_equal Mime[:html], @response.content_type
+    assert_equal Mime[:html], @response.media_type
 
     @request.accept = Mime[:js].to_s
     get :render_default_content_types_for_respond_to
-    assert_equal Mime[:js], @response.content_type
+    assert_equal Mime[:js], @response.media_type
   end
 
   def test_render_default_content_types_for_respond_to_with_template
     @request.accept = Mime[:xml].to_s
     get :render_default_content_types_for_respond_to
-    assert_equal Mime[:xml], @response.content_type
+    assert_equal Mime[:xml], @response.media_type
   end
 
   def test_render_default_content_types_for_respond_to_with_overwrite
     @request.accept = Mime[:rss].to_s
     get :render_default_content_types_for_respond_to
-    assert_equal Mime[:xml], @response.content_type
+    assert_equal Mime[:xml], @response.media_type
   end
 end

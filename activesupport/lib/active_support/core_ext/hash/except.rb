@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Hash
   # Returns a hash that includes everything except given keys.
   #   hash = { a: true, b: false, c: nil }
@@ -8,8 +10,8 @@ class Hash
   # This is useful for limiting a set of parameters to everything but a few known toggles:
   #   @person.update(params[:person].except(:admin))
   def except(*keys)
-    dup.except!(*keys)
-  end
+    slice(*self.keys - keys)
+  end unless method_defined?(:except)
 
   # Removes the given keys from hash and returns it.
   #   hash = { a: true, b: false, c: nil }

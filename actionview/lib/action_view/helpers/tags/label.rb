@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionView
   module Helpers
     module Tags # :nodoc:
@@ -22,6 +24,10 @@ module ActionView
             content ||= @method_name.humanize
 
             content
+          end
+
+          def to_s
+            translation
           end
         end
 
@@ -69,7 +75,6 @@ module ActionView
         end
 
         private
-
           def render_component(builder)
             builder.translation
           end

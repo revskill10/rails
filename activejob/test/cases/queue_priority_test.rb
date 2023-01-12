@@ -1,12 +1,19 @@
-require 'helper'
-require 'jobs/hello_job'
+# frozen_string_literal: true
+
+require "helper"
+require "jobs/configuration_job"
+require "jobs/hello_job"
 
 class QueuePriorityTest < ActiveSupport::TestCase
-  test 'priority unset by default' do
-    assert_equal nil, HelloJob.priority
+  setup do
+    JobBuffer.clear
   end
 
-  test 'uses given priority' do
+  test "priority unset by default" do
+    assert_nil HelloJob.priority
+  end
+
+  test "uses given priority" do
     original_priority = HelloJob.priority
 
     begin
@@ -17,7 +24,7 @@ class QueuePriorityTest < ActiveSupport::TestCase
     end
   end
 
-  test 'evals block given to priority to determine priority' do
+  test "evals block given to priority to determine priority" do
     original_priority = HelloJob.priority
 
     begin
@@ -28,20 +35,27 @@ class QueuePriorityTest < ActiveSupport::TestCase
     end
   end
 
-  test 'can use arguments to determine priority in priority block' do
+  test "can use arguments to determine priority in priority block" do
     original_priority = HelloJob.priority
 
     begin
-      HelloJob.queue_with_priority { self.arguments.first=='1' ? 99 : 11 }
-      assert_equal 99, HelloJob.new('1').priority
-      assert_equal 11, HelloJob.new('3').priority
+      HelloJob.queue_with_priority { arguments.first == "1" ? 99 : 11 }
+      assert_equal 99, HelloJob.new("1").priority
+      assert_equal 11, HelloJob.new("3").priority
     ensure
       HelloJob.priority = original_priority
     end
   end
 
-  test 'uses priority passed to #set' do
-    job = HelloJob.set(priority: 123).perform_later
+  test "is assigned when perform_now" do
+    ConfigurationJob.set(priority: 123).perform_now
+    job = JobBuffer.last_value
+    assert_equal 123, job.priority
+  end
+
+  test "is assigned when perform_later" do
+    ConfigurationJob.set(priority: 123).perform_later
+    job = JobBuffer.last_value
     assert_equal 123, job.priority
   end
 end

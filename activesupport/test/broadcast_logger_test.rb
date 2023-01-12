@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require_relative "abstract_unit"
 
 module ActiveSupport
   class BroadcastLoggerTest < TestCase
@@ -16,7 +18,7 @@ module ActiveSupport
       level = Logger::Severity.const_get(level_name)
 
       test "##{method} adds the message to all loggers" do
-        logger.send(method, "msg")
+        logger.public_send(method, "msg")
 
         assert_equal [level, "msg", nil], log1.adds.first
         assert_equal [level, "msg", nil], log2.adds.first
@@ -26,8 +28,8 @@ module ActiveSupport
     test "#close broadcasts to all loggers" do
       logger.close
 
-      assert log1.closed, 'should be closed'
-      assert log2.closed, 'should be closed'
+      assert log1.closed, "should be closed"
+      assert log2.closed, "should be closed"
     end
 
     test "#<< shovels the value into all loggers" do
@@ -69,6 +71,23 @@ module ActiveSupport
       assert_equal ::Logger::FATAL, log2.local_level
     end
 
+    test "#silence does not break custom loggers" do
+      new_logger = FakeLogger.new
+      custom_logger = CustomLogger.new
+      assert_respond_to new_logger, :silence
+      assert_not_respond_to custom_logger, :silence
+
+      custom_logger.extend(Logger.broadcast(new_logger))
+
+      custom_logger.silence do
+        custom_logger.error "from error"
+        custom_logger.unknown "from unknown"
+      end
+
+      assert_equal [[::Logger::ERROR, "from error", nil], [::Logger::UNKNOWN, "from unknown", nil]], custom_logger.adds
+      assert_equal [[::Logger::ERROR, "from error", nil], [::Logger::UNKNOWN, "from unknown", nil]], new_logger.adds
+    end
+
     test "#silence silences all loggers below the default level of ERROR" do
       logger.silence do
         logger.debug "test"
@@ -98,9 +117,7 @@ module ActiveSupport
       assert_equal [[::Logger::FATAL, "seen", nil]], log2.adds
     end
 
-    class FakeLogger
-      include LoggerSilence
-
+    class CustomLogger
       attr_reader :adds, :closed, :chevrons
       attr_accessor :level, :progname, :formatter, :local_level
 
@@ -138,17 +155,25 @@ module ActiveSupport
         add(::Logger::UNKNOWN, message, &block)
       end
 
-      def << x
+      def <<(x)
         @chevrons << x
       end
 
-      def add(message_level, message=nil, progname=nil, &block)
+      def add(message_level, message = nil, progname = nil, &block)
         @adds << [message_level, message, progname] if message_level >= local_level
       end
 
       def close
         @closed = true
       end
+    end
+
+    class FakeLogger < CustomLogger
+      include ActiveSupport::LoggerSilence
+
+      # LoggerSilence includes LoggerThreadSafeLevel which defines these as
+      # methods, so we need to redefine them
+      attr_accessor :level, :local_level
     end
   end
 end

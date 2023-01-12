@@ -1,5 +1,7 @@
-require 'abstract_unit'
-require 'action_controller/metal/strong_parameters'
+# frozen_string_literal: true
+
+require "abstract_unit"
+require "action_controller/metal/strong_parameters"
 
 class AlwaysPermittedParametersTest < ActiveSupport::TestCase
   def setup
@@ -18,12 +20,11 @@ class AlwaysPermittedParametersTest < ActiveSupport::TestCase
     end
   end
 
-  test "permits parameters that are whitelisted" do
-    params = ActionController::Parameters.new({
+  test "allows both explicitly listed and always-permitted parameters" do
+    params = ActionController::Parameters.new(
       book: { pages: 65 },
-      format: "json"
-    })
+      format: "json")
     permitted = params.permit book: [:pages]
-    assert permitted.permitted?
+    assert_predicate permitted, :permitted?
   end
 end

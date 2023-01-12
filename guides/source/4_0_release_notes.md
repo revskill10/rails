@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
 
 Ruby on Rails 4.0 Release Notes
 ===============================
@@ -11,7 +11,7 @@ Highlights in Rails 4.0:
 * Russian Doll Caching
 
 These release notes cover only the major changes. To learn about various bug
-fixes and changes, please refer to the change logs or check out the [list of
+fixes and changes, please refer to the changelogs or check out the [list of
 commits](https://github.com/rails/rails/commits/4-0-stable) in the main Rails
 repository on GitHub.
 
@@ -26,8 +26,8 @@ If you're upgrading an existing application, it's a great idea to have good test
 Creating a Rails 4.0 application
 --------------------------------
 
-```
- You should have the 'rails' RubyGem installed
+```bash
+# You should have the 'rails' RubyGem installed
 $ rails new myapp
 $ cd myapp
 ```
@@ -36,45 +36,45 @@ $ cd myapp
 
 Rails now uses a `Gemfile` in the application root to determine the gems you require for your application to start. This `Gemfile` is processed by the [Bundler](https://github.com/carlhuda/bundler) gem, which then installs all your dependencies. It can even install all the dependencies locally to your application so that it doesn't depend on the system gems.
 
-More information: [Bundler homepage](http://bundler.io)
+More information: [Bundler homepage](https://bundler.io)
 
 ### Living on the Edge
 
 `Bundler` and `Gemfile` makes freezing your Rails application easy as pie with the new dedicated `bundle` command. If you want to bundle straight from the Git repository, you can pass the `--edge` flag:
 
-```
+```bash
 $ rails new myapp --edge
 ```
 
 If you have a local checkout of the Rails repository and want to generate an application using that, you can pass the `--dev` flag:
 
-```
+```bash
 $ ruby /path/to/rails/railties/bin/rails new myapp --dev
 ```
 
 Major Features
 --------------
 
-[![Rails 4.0](images/rails4_features.png)](http://guides.rubyonrails.org/images/rails4_features.png)
+[![Rails 4.0](images/4_0_release_notes/rails4_features.png)](https://guides.rubyonrails.org/images/4_0_release_notes/rails4_features.png)
 
 ### Upgrade
 
 * **Ruby 1.9.3** ([commit](https://github.com/rails/rails/commit/a0380e808d3dbd2462df17f5d3b7fcd8bd812496)) - Ruby 2.0 preferred; 1.9.3+ required
-* **[New deprecation policy](http://www.youtube.com/watch?v=z6YgD6tVPQs)** - Deprecated features are warnings in Rails 4.0 and will be removed in Rails 4.1.
+* **[New deprecation policy](https://www.youtube.com/watch?v=z6YgD6tVPQs)** - Deprecated features are warnings in Rails 4.0 and will be removed in Rails 4.1.
 * **ActionPack page and action caching** ([commit](https://github.com/rails/rails/commit/b0a7068564f0c95e7ef28fc39d0335ed17d93e90)) - Page and action caching are extracted to a separate gem. Page and action caching requires too much manual intervention (manually expiring caches when the underlying model objects are updated). Instead, use Russian doll caching.
 * **ActiveRecord observers** ([commit](https://github.com/rails/rails/commit/ccecab3ba950a288b61a516bf9b6962e384aae0b)) - Observers are extracted to a separate gem. Observers are only needed for page and action caching, and can lead to spaghetti code.
 * **ActiveRecord session store** ([commit](https://github.com/rails/rails/commit/0ffe19056c8e8b2f9ae9d487b896cad2ce9387ad)) - The ActiveRecord session store is extracted to a separate gem. Storing sessions in SQL is costly. Instead, use cookie sessions, memcache sessions, or a custom session store.
 * **ActiveModel mass assignment protection** ([commit](https://github.com/rails/rails/commit/f8c9a4d3e88181cee644f91e1342bfe896ca64c6)) - Rails 3 mass assignment protection is deprecated. Instead, use strong parameters.
 * **ActiveResource** ([commit](https://github.com/rails/rails/commit/f1637bf2bb00490203503fbd943b73406e043d1d)) - ActiveResource is extracted to a separate gem. ActiveResource was not widely used.
-* **vendor/plugins removed** ([commit](https://github.com/rails/rails/commit/853de2bd9ac572735fa6cf59fcf827e485a231c3)) - Use a Gemfile to manage installed gems.
+* **vendor/plugins removed** ([commit](https://github.com/rails/rails/commit/853de2bd9ac572735fa6cf59fcf827e485a231c3)) - Use a `Gemfile` to manage installed gems.
 
 ### ActionPack
 
-* **Strong parameters** ([commit](https://github.com/rails/rails/commit/a8f6d5c6450a7fe058348a7f10a908352bb6c7fc)) - Only allow whitelisted parameters to update model objects (`params.permit(:title, :text)`).
+* **Strong parameters** ([commit](https://github.com/rails/rails/commit/a8f6d5c6450a7fe058348a7f10a908352bb6c7fc)) - Only allow permitted parameters to update model objects (`params.permit(:title, :text)`).
 * **Routing concerns** ([commit](https://github.com/rails/rails/commit/0dd24728a088fcb4ae616bb5d62734aca5276b1b)) - In the routing DSL, factor out common subroutes (`comments` from `/posts/1/comments` and `/videos/1/comments`).
 * **ActionController::Live** ([commit](https://github.com/rails/rails/commit/af0a9f9eefaee3a8120cfd8d05cbc431af376da3)) - Stream JSON with `response.stream`.
 * **Declarative ETags** ([commit](https://github.com/rails/rails/commit/ed5c938fa36995f06d4917d9543ba78ed506bb8d)) - Add controller-level etag additions that will be part of the action etag computation.
-* **[Russian doll caching](http://37signals.com/svn/posts/3113-how-key-based-cache-expiration-works)** ([commit](https://github.com/rails/rails/commit/4154bf012d2bec2aae79e4a49aa94a70d3e91d49)) - Cache nested fragments of views. Each fragment expires based on a set of dependencies (a cache key). The cache key is usually a template version number and a model object.
+* **[Russian doll caching](https://37signals.com/svn/posts/3113-how-key-based-cache-expiration-works)** ([commit](https://github.com/rails/rails/commit/4154bf012d2bec2aae79e4a49aa94a70d3e91d49)) - Cache nested fragments of views. Each fragment expires based on a set of dependencies (a cache key). The cache key is usually a template version number and a model object.
 * **Turbolinks** ([commit](https://github.com/rails/rails/commit/e35d8b18d0649c0ecc58f6b73df6b3c8d0c6bb74)) - Serve only one initial HTML page. When the user navigates to another page, use pushState to update the URL and use AJAX to update the title and body.
 * **Decouple ActionView from ActionController** ([commit](https://github.com/rails/rails/commit/78b0934dd1bb84e8f093fb8ef95ca99b297b51cd)) - ActionView was decoupled from ActionPack and will be moved to a separated gem in Rails 4.1.
 * **Do not depend on ActiveModel** ([commit](https://github.com/rails/rails/commit/166dbaa7526a96fdf046f093f25b0a134b277a68)) - ActionPack no longer depends on ActiveModel.
@@ -184,19 +184,19 @@ Please refer to the [Changelog](https://github.com/rails/rails/blob/4-0-stable/a
 * `String#to_date` now raises `ArgumentError: invalid date` instead of `NoMethodError: undefined method 'div' for nil:NilClass`
   when given an invalid date. It is now the same as `Date.parse`, and it accepts more invalid dates than 3.x, such as:
 
-  ```ruby
-  # ActiveSupport 3.x
-  "asdf".to_date # => NoMethodError: undefined method `div' for nil:NilClass
-  "333".to_date # => NoMethodError: undefined method `div' for nil:NilClass
+    ```ruby
+    # ActiveSupport 3.x
+    "asdf".to_date # => NoMethodError: undefined method `div' for nil:NilClass
+    "333".to_date # => NoMethodError: undefined method `div' for nil:NilClass
 
-  # ActiveSupport 4
-  "asdf".to_date # => ArgumentError: invalid date
-  "333".to_date # => Fri, 29 Nov 2013
-  ```
+    # ActiveSupport 4
+    "asdf".to_date # => ArgumentError: invalid date
+    "333".to_date # => Fri, 29 Nov 2013
+    ```
 
 ### Deprecations
 
-* Deprecate `ActiveSupport::TestCase#pending` method, use `skip` from MiniTest instead.
+* Deprecate `ActiveSupport::TestCase#pending` method, use `skip` from minitest instead.
 
 * `ActiveSupport::Benchmarkable#silence` has been deprecated due to its lack of thread safety. It will be removed without replacement in Rails 4.1.
 
@@ -234,11 +234,11 @@ Please refer to the [Changelog](https://github.com/rails/rails/blob/4-0-stable/a
       The method `change_table` is also reversible, as long as its block doesn't call `remove`, `change` or `change_default`
 
     * New method `reversible` makes it possible to specify code to be run when migrating up or down.
-      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/active_record_migrations.md#using-reversible)
+      See the [Guide on Migration](https://github.com/rails/rails/blob/main/guides/source/active_record_migrations.md#using-reversible)
 
     * New method `revert` will revert a whole migration or the given block.
       If migrating down, the given migration / block is run normally.
-      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/active_record_migrations.md#reverting-previous-migrations)
+      See the [Guide on Migration](https://github.com/rails/rails/blob/main/guides/source/active_record_migrations.md#reverting-previous-migrations)
 
 * Adds PostgreSQL array type support. Any datatype can be used to create an array column, with full migration and schema dumper support.
 
@@ -281,4 +281,4 @@ Please refer to the [Changelog](https://github.com/rails/rails/blob/4-0-stable/a
 Credits
 -------
 
-See the [full list of contributors to Rails](http://contributors.rubyonrails.org/) for the many people who spent many hours making Rails, the stable and robust framework it is. Kudos to all of them.
+See the [full list of contributors to Rails](https://contributors.rubyonrails.org/) for the many people who spent many hours making Rails, the stable and robust framework it is. Kudos to all of them.

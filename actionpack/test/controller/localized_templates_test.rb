@@ -1,4 +1,6 @@
-require 'abstract_unit'
+# frozen_string_literal: true
+
+require "abstract_unit"
 
 class LocalizedController < ActionController::Base
   def hello_world
@@ -41,6 +43,13 @@ class LocalizedTemplatesTest < ActionController::TestCase
     I18n.locale = :it
     get :hello_world
     assert_equal "Ciao Mondo", @response.body
-    assert_equal "text/html",  @response.content_type
+    assert_equal "text/html",  @response.media_type
+  end
+
+  def test_use_locale_with_lowdash
+    I18n.locale = :"de_AT"
+
+    get :hello_world
+    assert_equal "Guten Morgen", @response.body
   end
 end

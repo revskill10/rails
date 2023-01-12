@@ -1,13 +1,13 @@
-require 'active_support/core_ext/hash/except'
-require 'active_support/core_ext/hash/slice'
-require 'active_record/relation/merger'
+# frozen_string_literal: true
+
+require "active_support/core_ext/hash/except"
+require "active_support/core_ext/hash/slice"
+require "active_record/relation/merger"
 
 module ActiveRecord
   module SpawnMethods
-
-    # This is overridden by Associations::CollectionProxy
-    def spawn #:nodoc:
-      clone
+    def spawn # :nodoc:
+      already_in_scope?(klass.scope_registry) ? klass.all : clone
     end
 
     # Merges in the conditions from <tt>other</tt>, if <tt>other</tt> is an ActiveRecord::Relation.
@@ -27,21 +27,22 @@ module ActiveRecord
     #   # => Post.where(published: true).joins(:comments)
     #
     # This is mainly intended for sharing common conditions between multiple associations.
-    def merge(other)
+    def merge(other, *rest)
       if other.is_a?(Array)
         records & other
       elsif other
-        spawn.merge!(other)
+        spawn.merge!(other, *rest)
       else
         raise ArgumentError, "invalid argument: #{other.inspect}."
       end
     end
 
-    def merge!(other) # :nodoc:
+    def merge!(other, *rest) # :nodoc:
+      options = rest.extract_options!
       if other.is_a?(Hash)
-        Relation::HashMerger.new(self, other).merge
+        Relation::HashMerger.new(self, other, options[:rewhere]).merge
       elsif other.is_a?(Relation)
-        Relation::Merger.new(self, other).merge
+        Relation::Merger.new(self, other, options[:rewhere]).merge
       elsif other.respond_to?(:to_proc)
         instance_exec(&other)
       else
@@ -66,10 +67,9 @@ module ActiveRecord
     end
 
     private
-
-      def relation_with(values) # :nodoc:
-        result = Relation.create(klass, table, predicate_builder, values)
-        result.extend(*extending_values) if extending_values.any?
+      def relation_with(values)
+        result = spawn
+        result.instance_variable_set(:@values, values)
         result
       end
   end

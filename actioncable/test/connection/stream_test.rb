@@ -1,5 +1,8 @@
-require 'test_helper'
-require 'stubs/test_server'
+# frozen_string_literal: true
+
+require "test_helper"
+require "minitest/mock"
+require "stubs/test_server"
 
 class ActionCable::Connection::StreamTest < ActionCable::TestCase
   class Connection < ActionCable::Connection::Base
@@ -34,28 +37,28 @@ class ActionCable::Connection::StreamTest < ActionCable::TestCase
 
   [ EOFError, Errno::ECONNRESET ].each do |closed_exception|
     test "closes socket on #{closed_exception}" do
-      skip if ENV['FAYE'].present?
-
       run_in_eventmachine do
-        connection = open_connection
+        rack_hijack_io = File.open(File::NULL, "w")
+        connection = open_connection(rack_hijack_io)
 
         # Internal hax = :(
         client = connection.websocket.send(:websocket)
-        client.instance_variable_get('@stream').instance_variable_get('@rack_hijack_io').expects(:write).raises(closed_exception, 'foo')
-        client.expects(:client_gone)
-
-        client.write('boo')
+        rack_hijack_io.stub(:write_nonblock, proc { raise(closed_exception, "foo") }) do
+          assert_called(client, :client_gone) do
+            client.write("boo")
+          end
+        end
         assert_equal [], connection.errors
       end
     end
   end
 
   private
-    def open_connection
-      env = Rack::MockRequest.env_for '/test',
-        'HTTP_CONNECTION' => 'upgrade', 'HTTP_UPGRADE' => 'websocket',
-        'HTTP_HOST' => 'localhost', 'HTTP_ORIGIN' => 'http://rubyonrails.com'
-      env['rack.hijack'] = -> { env['rack.hijack_io'] = StringIO.new }
+    def open_connection(io)
+      env = Rack::MockRequest.env_for "/test",
+        "HTTP_CONNECTION" => "upgrade", "HTTP_UPGRADE" => "websocket",
+        "HTTP_HOST" => "localhost", "HTTP_ORIGIN" => "http://rubyonrails.com"
+      env["rack.hijack"] = -> { env["rack.hijack_io"] = io }
 
       Connection.new(@server, env).tap do |connection|
         connection.process

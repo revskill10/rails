@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   # ActiveRecord::Suppressor prevents the receiver from being saved during
   # a given block.
@@ -28,32 +30,28 @@ module ActiveRecord
   module Suppressor
     extend ActiveSupport::Concern
 
-    module ClassMethods
-      def suppress(&block)
-        previous_state = SuppressorRegistry.suppressed[name]
-        SuppressorRegistry.suppressed[name] = true
-        yield
-      ensure
-        SuppressorRegistry.suppressed[name] = previous_state
+    class << self
+      def registry # :nodoc:
+        ActiveSupport::IsolatedExecutionState[:active_record_suppressor_registry] ||= {}
       end
     end
 
-    def save(*) # :nodoc:
-      SuppressorRegistry.suppressed[self.class.name] ? true : super
+    module ClassMethods
+      def suppress(&block)
+        previous_state = Suppressor.registry[name]
+        Suppressor.registry[name] = true
+        yield
+      ensure
+        Suppressor.registry[name] = previous_state
+      end
     end
 
-    def save!(*) # :nodoc:
-      SuppressorRegistry.suppressed[self.class.name] ? true : super
+    def save(**) # :nodoc:
+      Suppressor.registry[self.class.name] ? true : super
     end
-  end
 
-  class SuppressorRegistry # :nodoc:
-    extend ActiveSupport::PerThreadRegistry
-
-    attr_reader :suppressed
-
-    def initialize
-      @suppressed = {}
+    def save!(**) # :nodoc:
+      Suppressor.registry[self.class.name] ? true : super
     end
   end
 end

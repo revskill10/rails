@@ -1,5 +1,7 @@
-require 'thread'
-require 'monitor'
+# frozen_string_literal: true
+
+require "thread"
+require "monitor"
 
 module ActiveSupport
   module Concurrency
@@ -12,7 +14,6 @@ module ActiveSupport
       # We track Thread objects, instead of just using counters, because
       # we need exclusive locks to be reentrant, and we need to be able
       # to upgrade share locks to exclusive.
-
 
       def raw_state # :nodoc:
         synchronize do
@@ -199,28 +200,27 @@ module ActiveSupport
       end
 
       private
+        # Must be called within synchronize
+        def busy_for_exclusive?(purpose)
+          busy_for_sharing?(purpose) ||
+            @sharing.size > (@sharing[Thread.current] > 0 ? 1 : 0)
+        end
 
-      # Must be called within synchronize
-      def busy_for_exclusive?(purpose)
-        busy_for_sharing?(purpose) ||
-          @sharing.size > (@sharing[Thread.current] > 0 ? 1 : 0)
-      end
+        def busy_for_sharing?(purpose)
+          (@exclusive_thread && @exclusive_thread != Thread.current) ||
+            @waiting.any? { |t, (_, c)| t != Thread.current && !c.include?(purpose) }
+        end
 
-      def busy_for_sharing?(purpose)
-        (@exclusive_thread && @exclusive_thread != Thread.current) ||
-          @waiting.any? { |t, (_, c)| t != Thread.current && !c.include?(purpose) }
-      end
+        def eligible_waiters?(compatible)
+          @waiting.any? { |t, (p, _)| compatible.include?(p) && @waiting.all? { |t2, (_, c2)| t == t2 || c2.include?(p) } }
+        end
 
-      def eligible_waiters?(compatible)
-        @waiting.any? { |t, (p, _)| compatible.include?(p) && @waiting.all? { |t2, (_, c2)| t == t2 || c2.include?(p) } }
-      end
-
-      def wait_for(method)
-        @sleeping[Thread.current] = method
-        @cv.wait_while { yield }
-      ensure
-        @sleeping.delete Thread.current
-      end
+        def wait_for(method, &block)
+          @sleeping[Thread.current] = method
+          @cv.wait_while(&block)
+        ensure
+          @sleeping.delete Thread.current
+        end
     end
   end
 end

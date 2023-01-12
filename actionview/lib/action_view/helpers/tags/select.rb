@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionView
   module Helpers
     module Tags # :nodoc:
@@ -13,8 +15,8 @@ module ActionView
 
         def render
           option_tags_options = {
-            :selected => @options.fetch(:selected) { value(@object) },
-            :disabled => @options[:disabled]
+            selected: @options.fetch(:selected) { value.nil? ? "" : value },
+            disabled: @options[:disabled]
           }
 
           option_tags = if grouped_choices?
@@ -27,14 +29,13 @@ module ActionView
         end
 
         private
-
-        # Grouped choices look like this:
-        #
-        #   [nil, []]
-        #   { nil => [] }
-        def grouped_choices?
-          !@choices.empty? && @choices.first.respond_to?(:last) && Array === @choices.first.last
-        end
+          # Grouped choices look like this:
+          #
+          #   [nil, []]
+          #   { nil => [] }
+          def grouped_choices?
+            !@choices.blank? && @choices.first.respond_to?(:second) && Array === @choices.first.second
+          end
       end
     end
   end

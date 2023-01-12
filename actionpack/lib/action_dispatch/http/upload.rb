@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActionDispatch
   module Http
     # Models uploaded files.
@@ -18,29 +20,43 @@ module ActionDispatch
       # A +Tempfile+ object with the actual uploaded file. Note that some of
       # its interface is available directly.
       attr_accessor :tempfile
-      alias :to_io :tempfile
 
       # A string with the headers of the multipart request.
       attr_accessor :headers
 
       def initialize(hash) # :nodoc:
-        @tempfile          = hash[:tempfile]
-        raise(ArgumentError, ':tempfile is required') unless @tempfile
+        @tempfile = hash[:tempfile]
+        raise(ArgumentError, ":tempfile is required") unless @tempfile
 
-        @original_filename = hash[:filename]
-        if @original_filename
+        @content_type = hash[:type]
+
+        if hash[:filename]
+          @original_filename = hash[:filename].dup
+
           begin
             @original_filename.encode!(Encoding::UTF_8)
           rescue EncodingError
             @original_filename.force_encoding(Encoding::UTF_8)
           end
+        else
+          @original_filename = nil
         end
-        @content_type      = hash[:type]
-        @headers           = hash[:head]
+
+        if hash[:head]
+          @headers = hash[:head].dup
+
+          begin
+            @headers.encode!(Encoding::UTF_8)
+          rescue EncodingError
+            @headers.force_encoding(Encoding::UTF_8)
+          end
+        else
+          @headers = nil
+        end
       end
 
       # Shortcut for +tempfile.read+.
-      def read(length=nil, buffer=nil)
+      def read(length = nil, buffer = nil)
         @tempfile.read(length, buffer)
       end
 
@@ -50,13 +66,18 @@ module ActionDispatch
       end
 
       # Shortcut for +tempfile.close+.
-      def close(unlink_now=false)
+      def close(unlink_now = false)
         @tempfile.close(unlink_now)
       end
 
       # Shortcut for +tempfile.path+.
       def path
         @tempfile.path
+      end
+
+      # Shortcut for +tempfile.to_path+.
+      def to_path
+        @tempfile.to_path
       end
 
       # Shortcut for +tempfile.rewind+.
@@ -72,6 +93,10 @@ module ActionDispatch
       # Shortcut for +tempfile.eof?+.
       def eof?
         @tempfile.eof?
+      end
+
+      def to_io
+        @tempfile.to_io
       end
     end
   end

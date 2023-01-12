@@ -1,11 +1,22 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/rails/resource/resource_generator'
+# frozen_string_literal: true
+
+require "generators/generators_test_helper"
+require "rails/generators/rails/resource/resource_generator"
 
 class ResourceGeneratorTest < Rails::Generators::TestCase
   include GeneratorsTestHelper
   arguments %w(account)
 
-  setup :copy_routes
+  def setup
+    super
+    copy_routes
+    Rails::Generators::ModelHelpers.skip_warn = false
+  end
+
+  def test_help_with_usage_description
+    content = run_generator ["--help"]
+    assert_match(/Generates a new resource/, content)
+  end
 
   def test_help_with_inherited_options
     content = run_generator ["--help"]
@@ -59,7 +70,7 @@ class ResourceGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_plural_names_are_singularized
-    content = run_generator ["accounts".freeze]
+    content = run_generator ["accounts"]
     assert_file "app/models/account.rb", /class Account < ApplicationRecord/
     assert_file "test/models/account_test.rb", /class AccountTest/
     assert_match(/\[WARNING\] The model name 'accounts' was recognized as a plural, using the singular 'account' instead\. Override with --force-plural or setup custom inflection rules for this noun before running the generator\./, content)
@@ -73,7 +84,7 @@ class ResourceGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_mass_nouns_do_not_throw_warnings
-    content = run_generator ["sheep".freeze]
+    content = run_generator ["sheep"]
     assert_no_match(/\[WARNING\]/, content)
   end
 

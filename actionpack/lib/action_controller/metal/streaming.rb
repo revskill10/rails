@@ -1,9 +1,11 @@
-require 'rack/chunked'
+# frozen_string_literal: true
 
-module ActionController #:nodoc:
+require "rack/chunked"
+
+module ActionController # :nodoc:
   # Allows views to be streamed back to the client as they are rendered.
   #
-  # The default way Rails renders views is by first rendering the template
+  # By default, Rails renders views by first rendering the template
   # and then the layout. The response is sent to the client after the whole
   # template is rendered, all queries are made, and the layout is processed.
   #
@@ -22,7 +24,7 @@ module ActionController #:nodoc:
   # Ruby implementation).
   #
   # Streaming can be added to a given template easily, all you need to do is
-  # to pass the :stream option.
+  # to pass the +:stream+ option.
   #
   #   class PostsController
   #     def index
@@ -57,8 +59,8 @@ module ActionController #:nodoc:
   #     render stream: true
   #   end
   #
-  # Notice that :stream only works with templates. Rendering :json
-  # or :xml with :stream won't work.
+  # Notice that +:stream+ only works with templates. Rendering +:json+
+  # or +:xml+ with +:stream+ won't work.
   #
   # == Communication between layout and template
   #
@@ -70,7 +72,7 @@ module ActionController #:nodoc:
   # variables set in the template to be used in the layout, they won't
   # work once you move to streaming. The proper way to communicate
   # between layout and template, regardless of whether you use streaming
-  # or not, is by using +content_for+, +provide+ and +yield+.
+  # or not, is by using +content_for+, +provide+, and +yield+.
   #
   # Take a simple example where the layout expects the template to tell
   # which title to use:
@@ -130,7 +132,7 @@ module ActionController #:nodoc:
   # That said, when streaming, you need to properly check your templates
   # and choose when to use +provide+ and +content_for+.
   #
-  # == Headers, cookies, session and flash
+  # == Headers, cookies, session, and flash
   #
   # When streaming, the HTTP headers are sent to the client right before
   # it renders the first line. This means that, modifying headers, cookies,
@@ -145,7 +147,7 @@ module ActionController #:nodoc:
   # needs to inject contents in the HTML body.
   #
   # Also <tt>Rack::Cache</tt> won't work with streaming as it does not support
-  # streaming bodies yet. Whenever streaming Cache-Control is automatically
+  # streaming bodies yet. Whenever streaming +Cache-Control+ is automatically
   # set to "no-cache".
   #
   # == Errors
@@ -181,7 +183,7 @@ module ActionController #:nodoc:
   #   unicorn_rails --config-file unicorn.config.rb
   #
   # You may also want to configure other parameters like <tt>:tcp_nodelay</tt>.
-  # Please check its documentation for more information: http://unicorn.bogomips.org/Unicorn/Configurator.html#method-i-listen
+  # Please check its documentation for more information: https://bogomips.org/unicorn/Unicorn/Configurator.html#method-i-listen
   #
   # If you are using Unicorn with NGINX, you may need to tweak NGINX.
   # Streaming should work out of the box on Rainbows.
@@ -191,12 +193,9 @@ module ActionController #:nodoc:
   # To be described.
   #
   module Streaming
-    extend ActiveSupport::Concern
-
-    protected
-
+    private
       # Set proper cache control and transfer encoding when streaming
-      def _process_options(options) #:nodoc:
+      def _process_options(options)
         super
         if options[:stream]
           if request.version == "HTTP/1.0"
@@ -210,7 +209,7 @@ module ActionController #:nodoc:
       end
 
       # Call render_body if we are streaming instead of usual +render+.
-      def _render_template(options) #:nodoc:
+      def _render_template(options)
         if options.delete(:stream)
           Rack::Chunked::Body.new view_renderer.render_body(view_context, options)
         else

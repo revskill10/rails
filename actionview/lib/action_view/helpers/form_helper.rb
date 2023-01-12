@@ -1,23 +1,25 @@
-require 'cgi'
-require 'action_view/helpers/date_helper'
-require 'action_view/helpers/tag_helper'
-require 'action_view/helpers/form_tag_helper'
-require 'action_view/helpers/active_model_helper'
-require 'action_view/model_naming'
-require 'action_view/record_identifier'
-require 'active_support/core_ext/module/attribute_accessors'
-require 'active_support/core_ext/hash/slice'
-require 'active_support/core_ext/string/output_safety'
-require 'active_support/core_ext/string/inflections'
+# frozen_string_literal: true
+
+require "cgi"
+require "action_view/helpers/date_helper"
+require "action_view/helpers/url_helper"
+require "action_view/helpers/form_tag_helper"
+require "action_view/helpers/active_model_helper"
+require "action_view/model_naming"
+require "action_view/record_identifier"
+require "active_support/core_ext/module/attribute_accessors"
+require "active_support/core_ext/hash/slice"
+require "active_support/core_ext/string/output_safety"
+require "active_support/core_ext/string/inflections"
 
 module ActionView
   # = Action View Form Helpers
-  module Helpers
+  module Helpers # :nodoc:
     # Form helpers are designed to make working with resources much easier
     # compared to using vanilla HTML.
     #
     # Typically, a form designed to create or update a resource reflects the
-    # identity of the resource in several ways: (i) the url that the form is
+    # identity of the resource in several ways: (i) the URL that the form is
     # sent to (the form element's +action+ attribute) should result in a request
     # being routed to the appropriate controller action (with the appropriate <tt>:id</tt>
     # parameter in the case of an existing resource), (ii) input fields should
@@ -164,7 +166,7 @@ module ActionView
       #   So for example you may use a named route directly. When the model is
       #   represented by a string or symbol, as in the example above, if the
       #   <tt>:url</tt> option is not specified, by default the form will be
-      #   sent back to the current url (We will describe below an alternative
+      #   sent back to the current URL (We will describe below an alternative
       #   resource-oriented usage of +form_for+ in which the URL does not need
       #   to be specified explicitly).
       # * <tt>:namespace</tt> - A namespace for your form to ensure uniqueness of
@@ -183,8 +185,7 @@ module ActionView
       #   get the authenticity token from the <tt>meta</tt> tag, so embedding is
       #   unnecessary unless you support browsers without JavaScript.
       # * <tt>:remote</tt> - If set to true, will allow the Unobtrusive
-      #   JavaScript drivers to control the submit behavior. By default this
-      #   behavior is an ajax submit.
+      #   JavaScript drivers to control the submit behavior.
       # * <tt>:enforce_utf8</tt> - If set to false, a hidden input with name
       #   utf8 is not output.
       # * <tt>:html</tt> - Optional HTML attributes for the form tag.
@@ -201,9 +202,9 @@ module ActionView
       #     <%= f.submit %>
       #   <% end %>
       #
-      # This also works for the methods in FormOptionHelper and DateHelper that
+      # This also works for the methods in FormOptionsHelper and DateHelper that
       # are designed to work with an object as base, like
-      # FormOptionHelper#collection_select and DateHelper#datetime_select.
+      # FormOptionsHelper#collection_select and DateHelper#datetime_select.
       #
       # === #form_for with a model object
       #
@@ -281,6 +282,12 @@ module ActionView
       #     ...
       #   <% end %>
       #
+      # You can omit the <tt>action</tt> attribute by passing <tt>url: false</tt>:
+      #
+      #   <%= form_for(@post, url: false) do |f| %>
+      #     ...
+      #   <% end %>
+      #
       # You can also set the answer format, like this:
       #
       #   <%= form_for(@post, format: :json) do |f| %>
@@ -320,10 +327,8 @@ module ActionView
       #    remote: true
       #
       # in the options hash creates a form that will allow the unobtrusive JavaScript drivers to modify its
-      # behavior. The expected default behavior is an XMLHttpRequest in the background instead of the regular
-      # POST arrangement, but ultimately the behavior is the choice of the JavaScript driver implementor.
-      # Even though it's using JavaScript to serialize the form elements, the form submission will work just like
-      # a regular submission as viewed by the receiving side (all elements available in <tt>params</tt>).
+      # behavior. The form submission will work just like a regular submission as viewed by the receiving
+      # side (all elements available in <tt>params</tt>).
       #
       # Example:
       #
@@ -416,63 +421,364 @@ module ActionView
       #
       # To set an authenticity token you need to pass an <tt>:authenticity_token</tt> parameter
       #
-      #   <%= form_for @invoice, url: external_url, authenticity_token: 'external_token' do |f|
+      #   <%= form_for @invoice, url: external_url, authenticity_token: 'external_token' do |f| %>
       #     ...
       #   <% end %>
       #
       # If you don't want to an authenticity token field be rendered at all just pass <tt>false</tt>:
       #
-      #   <%= form_for @invoice, url: external_url, authenticity_token: false do |f|
+      #   <%= form_for @invoice, url: external_url, authenticity_token: false do |f| %>
       #     ...
       #   <% end %>
       def form_for(record, options = {}, &block)
         raise ArgumentError, "Missing block" unless block_given?
-        html_options = options[:html] ||= {}
 
         case record
         when String, Symbol
+          model       = nil
           object_name = record
-          object      = nil
         else
-          object      = record.is_a?(Array) ? record.last : record
+          model       = record
+          object      = _object_for_form_builder(record)
           raise ArgumentError, "First argument in form cannot contain nil or be empty" unless object
           object_name = options[:as] || model_name_from_record_or_class(object).param_key
-          apply_form_for_options!(record, object, options)
+          apply_form_for_options!(object, options)
         end
 
-        html_options[:data]   = options.delete(:data)   if options.has_key?(:data)
-        html_options[:remote] = options.delete(:remote) if options.has_key?(:remote)
-        html_options[:method] = options.delete(:method) if options.has_key?(:method)
-        html_options[:enforce_utf8] = options.delete(:enforce_utf8) if options.has_key?(:enforce_utf8)
-        html_options[:authenticity_token] = options.delete(:authenticity_token)
+        remote = options.delete(:remote)
 
-        builder = instantiate_builder(object_name, object, options)
-        output  = capture(builder, &block)
-        html_options[:multipart] ||= builder.multipart?
+        if remote && !embed_authenticity_token_in_remote_forms && options[:authenticity_token].blank?
+          options[:authenticity_token] = false
+        end
 
-        html_options = html_options_for_form(options[:url] || {}, html_options)
-        form_tag_with_body(html_options, output)
+        options[:model]                               = model
+        options[:scope]                               = object_name
+        options[:local]                               = !remote
+        options[:skip_default_ids]                    = false
+        options[:allow_method_names_outside_object]   = options.fetch(:allow_method_names_outside_object, false)
+
+        form_with(**options, &block)
       end
 
-      def apply_form_for_options!(record, object, options) #:nodoc:
+      def apply_form_for_options!(object, options) # :nodoc:
         object = convert_to_model(object)
 
         as = options[:as]
         namespace = options[:namespace]
-        action, method = object.respond_to?(:persisted?) && object.persisted? ? [:edit, :patch] : [:new, :post]
+        action = object.respond_to?(:persisted?) && object.persisted? ? :edit : :new
+        options[:html] ||= {}
         options[:html].reverse_merge!(
           class:  as ? "#{action}_#{as}" : dom_class(object, action),
           id:     (as ? [namespace, action, as] : [namespace, dom_id(object, action)]).compact.join("_").presence,
-          method: method
         )
-
-        options[:url] ||= if options.key?(:format)
-                            polymorphic_path(record, format: options.delete(:format))
-                          else
-                            polymorphic_path(record, {})
-                          end
       end
       private :apply_form_for_options!
+
+      mattr_accessor :form_with_generates_remote_forms, default: true
+
+      mattr_accessor :form_with_generates_ids, default: false
+
+      mattr_accessor :multiple_file_field_include_hidden, default: false
+
+      # Creates a form tag based on mixing URLs, scopes, or models.
+      #
+      #   # Using just a URL:
+      #   <%= form_with url: posts_path do |form| %>
+      #     <%= form.text_field :title %>
+      #   <% end %>
+      #   # =>
+      #   <form action="/posts" method="post">
+      #     <input type="text" name="title">
+      #   </form>
+      #
+      #   # With an intentionally empty URL:
+      #   <%= form_with url: false do |form| %>
+      #     <%= form.text_field :title %>
+      #   <% end %>
+      #   # =>
+      #   <form method="post">
+      #     <input type="text" name="title">
+      #   </form>
+      #
+      #   # Adding a scope prefixes the input field names:
+      #   <%= form_with scope: :post, url: posts_path do |form| %>
+      #     <%= form.text_field :title %>
+      #   <% end %>
+      #   # =>
+      #   <form action="/posts" method="post">
+      #     <input type="text" name="post[title]">
+      #   </form>
+      #
+      #   # Using a model infers both the URL and scope:
+      #   <%= form_with model: Post.new do |form| %>
+      #     <%= form.text_field :title %>
+      #   <% end %>
+      #   # =>
+      #   <form action="/posts" method="post">
+      #     <input type="text" name="post[title]">
+      #   </form>
+      #
+      #   # An existing model makes an update form and fills out field values:
+      #   <%= form_with model: Post.first do |form| %>
+      #     <%= form.text_field :title %>
+      #   <% end %>
+      #   # =>
+      #   <form action="/posts/1" method="post">
+      #     <input type="hidden" name="_method" value="patch">
+      #     <input type="text" name="post[title]" value="<the title of the post>">
+      #   </form>
+      #
+      #   # Though the fields don't have to correspond to model attributes:
+      #   <%= form_with model: Cat.new do |form| %>
+      #     <%= form.text_field :cats_dont_have_gills %>
+      #     <%= form.text_field :but_in_forms_they_can %>
+      #   <% end %>
+      #   # =>
+      #   <form action="/cats" method="post">
+      #     <input type="text" name="cat[cats_dont_have_gills]">
+      #     <input type="text" name="cat[but_in_forms_they_can]">
+      #   </form>
+      #
+      # The parameters in the forms are accessible in controllers according to
+      # their name nesting. So inputs named +title+ and <tt>post[title]</tt> are
+      # accessible as <tt>params[:title]</tt> and <tt>params[:post][:title]</tt>
+      # respectively.
+      #
+      # For ease of comparison the examples above left out the submit button,
+      # as well as the auto generated hidden fields that enable UTF-8 support
+      # and adds an authenticity token needed for cross site request forgery
+      # protection.
+      #
+      # === Resource-oriented style
+      #
+      # In many of the examples just shown, the +:model+ passed to +form_with+
+      # is a _resource_. It corresponds to a set of RESTful routes, most likely
+      # defined via +resources+ in <tt>config/routes.rb</tt>.
+      #
+      # So when passing such a model record, Rails infers the URL and method.
+      #
+      #   <%= form_with model: @post do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # is then equivalent to something like:
+      #
+      #   <%= form_with scope: :post, url: post_path(@post), method: :patch do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # And for a new record
+      #
+      #   <%= form_with model: Post.new do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # is equivalent to something like:
+      #
+      #   <%= form_with scope: :post, url: posts_path do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # ==== +form_with+ options
+      #
+      # * <tt>:url</tt> - The URL the form submits to. Akin to values passed to
+      #   +url_for+ or +link_to+. For example, you may use a named route
+      #   directly. When a <tt>:scope</tt> is passed without a <tt>:url</tt> the
+      #   form just submits to the current URL.
+      # * <tt>:method</tt> - The method to use when submitting the form, usually
+      #   either "get" or "post". If "patch", "put", "delete", or another verb
+      #   is used, a hidden input named <tt>_method</tt> is added to
+      #   simulate the verb over post.
+      # * <tt>:format</tt> - The format of the route the form submits to.
+      #   Useful when submitting to another resource type, like <tt>:json</tt>.
+      #   Skipped if a <tt>:url</tt> is passed.
+      # * <tt>:scope</tt> - The scope to prefix input field names with and
+      #   thereby how the submitted parameters are grouped in controllers.
+      # * <tt>:namespace</tt> - A namespace for your form to ensure uniqueness of
+      #   id attributes on form elements. The namespace attribute will be prefixed
+      #   with underscore on the generated HTML id.
+      # * <tt>:model</tt> - A model object to infer the <tt>:url</tt> and
+      #   <tt>:scope</tt> by, plus fill out input field values.
+      #   So if a +title+ attribute is set to "Ahoy!" then a +title+ input
+      #   field's value would be "Ahoy!".
+      #   If the model is a new record a create form is generated, if an
+      #   existing record, however, an update form is generated.
+      #   Pass <tt>:scope</tt> or <tt>:url</tt> to override the defaults.
+      #   E.g. turn <tt>params[:post]</tt> into <tt>params[:article]</tt>.
+      # * <tt>:authenticity_token</tt> - Authenticity token to use in the form.
+      #   Override with a custom authenticity token or pass <tt>false</tt> to
+      #   skip the authenticity token field altogether.
+      #   Useful when submitting to an external resource like a payment gateway
+      #   that might limit the valid fields.
+      #   Remote forms may omit the embedded authenticity token by setting
+      #   <tt>config.action_view.embed_authenticity_token_in_remote_forms = false</tt>.
+      #   This is helpful when fragment-caching the form. Remote forms
+      #   get the authenticity token from the <tt>meta</tt> tag, so embedding is
+      #   unnecessary unless you support browsers without JavaScript.
+      # * <tt>:local</tt> - Whether to use standard HTTP form submission.
+      #   When set to <tt>true</tt>, the form is submitted via standard HTTP.
+      #   When set to <tt>false</tt>, the form is submitted as a "remote form", which
+      #   is handled by Rails UJS as an XHR. When unspecified, the behavior is derived
+      #   from <tt>config.action_view.form_with_generates_remote_forms</tt> where the
+      #   config's value is actually the inverse of what <tt>local</tt>'s value would be.
+      #   As of Rails 6.1, that configuration option defaults to <tt>false</tt>
+      #   (which has the equivalent effect of passing <tt>local: true</tt>).
+      #   In previous versions of Rails, that configuration option defaults to
+      #   <tt>true</tt> (the equivalent of passing <tt>local: false</tt>).
+      # * <tt>:skip_enforcing_utf8</tt> - If set to true, a hidden input with name
+      #   utf8 is not output.
+      # * <tt>:builder</tt> - Override the object used to build the form.
+      # * <tt>:id</tt> - Optional HTML id attribute.
+      # * <tt>:class</tt> - Optional HTML class attribute.
+      # * <tt>:data</tt> - Optional HTML data attributes.
+      # * <tt>:html</tt> - Other optional HTML attributes for the form tag.
+      #
+      # === Examples
+      #
+      # When not passing a block, +form_with+ just generates an opening form tag.
+      #
+      #   <%= form_with(model: @post, url: super_posts_path) %>
+      #   <%= form_with(model: @post, scope: :article) %>
+      #   <%= form_with(model: @post, format: :json) %>
+      #   <%= form_with(model: @post, authenticity_token: false) %> # Disables the token.
+      #
+      # For namespaced routes, like +admin_post_url+:
+      #
+      #   <%= form_with(model: [ :admin, @post ]) do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # If your resource has associations defined, for example, you want to add comments
+      # to the document given that the routes are set correctly:
+      #
+      #   <%= form_with(model: [ @document, Comment.new ]) do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # Where <tt>@document = Document.find(params[:id])</tt>.
+      #
+      # === Mixing with other form helpers
+      #
+      # While +form_with+ uses a FormBuilder object it's possible to mix and
+      # match the stand-alone FormHelper methods and methods
+      # from FormTagHelper:
+      #
+      #   <%= form_with scope: :person do |form| %>
+      #     <%= form.text_field :first_name %>
+      #     <%= form.text_field :last_name %>
+      #
+      #     <%= text_area :person, :biography %>
+      #     <%= check_box_tag "person[admin]", "1", @person.company.admin? %>
+      #
+      #     <%= form.submit %>
+      #   <% end %>
+      #
+      # Same goes for the methods in FormOptionsHelper and DateHelper designed
+      # to work with an object as a base, like
+      # FormOptionsHelper#collection_select and DateHelper#datetime_select.
+      #
+      # === Setting the method
+      #
+      # You can force the form to use the full array of HTTP verbs by setting
+      #
+      #    method: (:get|:post|:patch|:put|:delete)
+      #
+      # in the options hash. If the verb is not GET or POST, which are natively
+      # supported by HTML forms, the form will be set to POST and a hidden input
+      # called _method will carry the intended verb for the server to interpret.
+      #
+      # === Setting HTML options
+      #
+      # You can set data attributes directly in a data hash, but HTML options
+      # besides id and class must be wrapped in an HTML key:
+      #
+      #   <%= form_with(model: @post, data: { behavior: "autosave" }, html: { name: "go" }) do |form| %>
+      #     ...
+      #   <% end %>
+      #
+      # generates
+      #
+      #   <form action="/posts/123" method="post" data-behavior="autosave" name="go">
+      #     <input name="_method" type="hidden" value="patch" />
+      #     ...
+      #   </form>
+      #
+      # === Removing hidden model id's
+      #
+      # The +form_with+ method automatically includes the model id as a hidden field in the form.
+      # This is used to maintain the correlation between the form data and its associated model.
+      # Some ORM systems do not use IDs on nested models so in this case you want to be able
+      # to disable the hidden id.
+      #
+      # In the following example the Post model has many Comments stored within it in a NoSQL database,
+      # thus there is no primary key for comments.
+      #
+      #   <%= form_with(model: @post) do |form| %>
+      #     <%= form.fields(:comments, skip_id: true) do |fields| %>
+      #       ...
+      #     <% end %>
+      #   <% end %>
+      #
+      # === Customized form builders
+      #
+      # You can also build forms using a customized FormBuilder class. Subclass
+      # FormBuilder and override or define some more helpers, then use your
+      # custom builder. For example, let's say you made a helper to
+      # automatically add labels to form inputs.
+      #
+      #   <%= form_with model: @person, url: { action: "create" }, builder: LabellingFormBuilder do |form| %>
+      #     <%= form.text_field :first_name %>
+      #     <%= form.text_field :last_name %>
+      #     <%= form.text_area :biography %>
+      #     <%= form.check_box :admin %>
+      #     <%= form.submit %>
+      #   <% end %>
+      #
+      # In this case, if you use:
+      #
+      #   <%= render form %>
+      #
+      # The rendered template is <tt>people/_labelling_form</tt> and the local
+      # variable referencing the form builder is called
+      # <tt>labelling_form</tt>.
+      #
+      # The custom FormBuilder class is automatically merged with the options
+      # of a nested +fields+ call, unless it's explicitly set.
+      #
+      # In many cases you will want to wrap the above in another helper, so you
+      # could do something like the following:
+      #
+      #   def labelled_form_with(**options, &block)
+      #     form_with(**options.merge(builder: LabellingFormBuilder), &block)
+      #   end
+      def form_with(model: nil, scope: nil, url: nil, format: nil, **options, &block)
+        options = { allow_method_names_outside_object: true, skip_default_ids: !form_with_generates_ids }.merge!(options)
+
+        if model
+          if url != false
+            url ||= if format.nil?
+              polymorphic_path(model, {})
+            else
+              polymorphic_path(model, format: format)
+            end
+          end
+
+          model   = convert_to_model(_object_for_form_builder(model))
+          scope ||= model_name_from_record_or_class(model).param_key
+        end
+
+        if block_given?
+          builder = instantiate_builder(scope, model, options)
+          output  = capture(builder, &block)
+          options[:multipart] ||= builder.multipart?
+
+          html_options = html_options_for_form_with(url, model, **options)
+          form_tag_with_body(html_options, output)
+        else
+          html_options = html_options_for_form_with(url, model, **options)
+          form_tag_html(html_options)
+        end
+      end
 
       # Creates a scope around a specific model object like form_for, but
       # doesn't create the form tags themselves. This makes fields_for suitable
@@ -531,9 +837,9 @@ module ActionView
       # _class_ of the model object, e.g. if <tt>@person.permission</tt>, is
       # of class +Permission+, the field will still be named <tt>permission[admin]</tt>.
       #
-      # Note: This also works for the methods in FormOptionHelper and
+      # Note: This also works for the methods in FormOptionsHelper and
       # DateHelper that are designed to work with an object as base, like
-      # FormOptionHelper#collection_select and DateHelper#datetime_select.
+      # FormOptionsHelper#collection_select and DateHelper#datetime_select.
       #
       # === Nested Attributes Examples
       #
@@ -599,7 +905,7 @@ module ActionView
       #
       # Now, when you use a form element with the <tt>_destroy</tt> parameter,
       # with a value that evaluates to +true+, you will destroy the associated
-      # model (eg. 1, '1', true, or 'true'):
+      # model (e.g. 1, '1', true, or 'true'):
       #
       #   <%= form_for @person do |person_form| %>
       #     ...
@@ -688,7 +994,7 @@ module ActionView
       # This will allow you to specify which models to destroy in the
       # attributes hash by adding a form element for the <tt>_destroy</tt>
       # parameter with a value that evaluates to +true+
-      # (eg. 1, '1', true, or 'true'):
+      # (e.g. 1, '1', true, or 'true'):
       #
       #   <%= form_for @person do |person_form| %>
       #     ...
@@ -712,17 +1018,76 @@ module ActionView
       #   <% end %>
       #
       # Note that fields_for will automatically generate a hidden field
-      # to store the ID of the record. There are circumstances where this
-      # hidden field is not needed and you can pass <tt>include_id: false</tt>
-      # to prevent fields_for from rendering it automatically.
+      # to store the ID of the record if it responds to <tt>persisted?</tt>.
+      # There are circumstances where this hidden field is not needed and you
+      # can pass <tt>include_id: false</tt> to prevent fields_for from
+      # rendering it automatically.
       def fields_for(record_name, record_object = nil, options = {}, &block)
-        builder = instantiate_builder(record_name, record_object, options)
+        options = { model: record_object, allow_method_names_outside_object: false, skip_default_ids: false }.merge!(options)
+
+        fields(record_name, **options, &block)
+      end
+
+      # Scopes input fields with either an explicit scope or model.
+      # Like +form_with+ does with <tt>:scope</tt> or <tt>:model</tt>,
+      # except it doesn't output the form tags.
+      #
+      #   # Using a scope prefixes the input field names:
+      #   <%= fields :comment do |fields| %>
+      #     <%= fields.text_field :body %>
+      #   <% end %>
+      #   # => <input type="text" name="comment[body]">
+      #
+      #   # Using a model infers the scope and assigns field values:
+      #   <%= fields model: Comment.new(body: "full bodied") do |fields| %>
+      #     <%= fields.text_field :body %>
+      #   <% end %>
+      #   # => <input type="text" name="comment[body]" value="full bodied">
+      #
+      #   # Using +fields+ with +form_with+:
+      #   <%= form_with model: @post do |form| %>
+      #     <%= form.text_field :title %>
+      #
+      #     <%= form.fields :comment do |fields| %>
+      #       <%= fields.text_field :body %>
+      #     <% end %>
+      #   <% end %>
+      #
+      # Much like +form_with+ a FormBuilder instance associated with the scope
+      # or model is yielded, so any generated field names are prefixed with
+      # either the passed scope or the scope inferred from the <tt>:model</tt>.
+      #
+      # === Mixing with other form helpers
+      #
+      # While +form_with+ uses a FormBuilder object it's possible to mix and
+      # match the stand-alone FormHelper methods and methods
+      # from FormTagHelper:
+      #
+      #   <%= fields model: @comment do |fields| %>
+      #     <%= fields.text_field :body %>
+      #
+      #     <%= text_area :commenter, :biography %>
+      #     <%= check_box_tag "comment[all_caps]", "1", @comment.commenter.hulk_mode? %>
+      #   <% end %>
+      #
+      # Same goes for the methods in FormOptionsHelper and DateHelper designed
+      # to work with an object as a base, like
+      # FormOptionsHelper#collection_select and DateHelper#datetime_select.
+      def fields(scope = nil, model: nil, **options, &block)
+        options = { allow_method_names_outside_object: true, skip_default_ids: !form_with_generates_ids }.merge!(options)
+
+        if model
+          model   = _object_for_form_builder(model)
+          scope ||= model_name_from_record_or_class(model).param_key
+        end
+
+        builder = instantiate_builder(scope, model, options)
         capture(builder, &block)
       end
 
       # Returns a label tag tailored for labelling an input field for a specified attribute (identified by +method+) on an object
       # assigned to the template (identified by +object+). The text of label will default to the attribute name unless a translation
-      # is found in the current I18n locale (through helpers.label.<modelname>.<attribute>) or you specify it explicitly.
+      # is found in the current I18n locale (through <tt>helpers.label.<modelname>.<attribute></tt>) or you specify it explicitly.
       # Additional options on the label tag can be passed as a hash with +options+. These options will be tagged
       # onto the HTML as an HTML element attribute as in the example shown, except for the <tt>:value</tt> option, which is designed to
       # target labels for radio_button tags (where the value is used in the ID of the input tag).
@@ -764,6 +1129,16 @@ module ActionView
       #   label(:post, :privacy, "Public Post", value: "public")
       #   # => <label for="post_privacy_public">Public Post</label>
       #
+      #   label(:post, :cost) do |translation|
+      #     content_tag(:span, translation, class: "cost_label")
+      #   end
+      #   # => <label for="post_cost"><span class="cost_label">Total cost</span></label>
+      #
+      #   label(:post, :cost) do |builder|
+      #     content_tag(:span, builder.translation, class: "cost_label")
+      #   end
+      #   # => <label for="post_cost"><span class="cost_label">Total cost</span></label>
+      #
       #   label(:post, :terms) do
       #     raw('Accept <a href="/terms">Terms</a>.')
       #   end
@@ -783,6 +1158,9 @@ module ActionView
       #
       #   text_field(:post, :title, class: "create_input")
       #   # => <input type="text" id="post_title" name="post[title]" value="#{@post.title}" class="create_input" />
+      #
+      #   text_field(:post, :title,  maxlength: 30, class: "title_input")
+      #   # => <input type="text" id="post_title" name="post[title]" maxlength="30" size="30" value="#{@post.title}" class="title_input" />
       #
       #   text_field(:session, :user, onchange: "if ($('#session_user').val() === 'admin') { alert('Your login cannot be admin!'); }")
       #   # => <input type="text" id="session_user" name="session[user]" value="#{@session.user}" onchange="if ($('#session_user').val() === 'admin') { alert('Your login cannot be admin!'); }"/>
@@ -843,6 +1221,7 @@ module ActionView
       # * Creates standard HTML attributes for the tag.
       # * <tt>:disabled</tt> - If set to true, the user will not be able to use this input.
       # * <tt>:multiple</tt> - If set to true, *in most updated browsers* the user will be allowed to select multiple files.
+      # * <tt>:include_hidden</tt> - When <tt>multiple: true</tt> and <tt>include_hidden: true</tt>, the field will be prefixed with an <tt><input type="hidden"></tt> field with an empty value to support submitting an empty collection of files.
       # * <tt>:accept</tt> - If set to one or multiple mime-types, the user will be suggested a filter when choosing a file. You still need to set up model validations.
       #
       # ==== Examples
@@ -861,7 +1240,9 @@ module ActionView
       #   file_field(:attachment, :file, class: 'file_input')
       #   # => <input type="file" id="attachment_file" name="attachment[file]" class="file_input" />
       def file_field(object_name, method, options = {})
-        Tags::FileField.new(object_name, method, self, options).render
+        options = { include_hidden: multiple_file_field_include_hidden }.merge!(options)
+
+        Tags::FileField.new(object_name, method, self, convert_direct_upload_option_to_url(options.dup)).render
       end
 
       # Returns a textarea opening and closing tag set tailored for accessing a specified attribute (identified by +method+)
@@ -898,6 +1279,12 @@ module ActionView
       # Additional options on the input tag can be passed as a hash with +options+. The +checked_value+ defaults to 1
       # while the default +unchecked_value+ is set to 0 which is convenient for boolean values.
       #
+      # ==== Options
+      #
+      # * Any standard HTML attributes for the tag can be passed in, for example +:class+.
+      # * <tt>:checked</tt> - +true+ or +false+ forces the state of the checkbox to be checked or not.
+      # * <tt>:include_hidden</tt> - If set to false, the auxiliary hidden field described below will not be generated.
+      #
       # ==== Gotcha
       #
       # The HTML specification says unchecked check boxes are not successful, and
@@ -911,7 +1298,7 @@ module ActionView
       # wouldn't update the flag.
       #
       # To prevent this the helper generates an auxiliary hidden field before
-      # the very check box. The hidden field has the same name and its
+      # every check box. The hidden field has the same name and its
       # attributes mimic an unchecked check box.
       #
       # This way, the client either sends only the hidden field (representing
@@ -934,6 +1321,8 @@ module ActionView
       #
       # In that case it is preferable to either use +check_box_tag+ or to use
       # hashes instead of arrays.
+      #
+      # ==== Examples
       #
       #   # Let's say that @post.validated? is 1:
       #   check_box("post", "validated")
@@ -965,6 +1354,7 @@ module ActionView
       #   # => <input type="radio" id="post_category_rails" name="post[category]" value="rails" checked="checked" />
       #   #    <input type="radio" id="post_category_java" name="post[category]" value="java" />
       #
+      #   # Let's say that @user.receive_newsletter returns "no":
       #   radio_button("user", "receive_newsletter", "yes")
       #   radio_button("user", "receive_newsletter", "no")
       #   # => <input type="radio" id="user_receive_newsletter_yes" name="user[receive_newsletter]" value="yes" />
@@ -1048,13 +1438,16 @@ module ActionView
       # Returns a text_field of type "time".
       #
       # The default value is generated by trying to call +strftime+ with "%T.%L"
-      # on the object's value. It is still possible to override that
-      # by passing the "value" option.
+      # on the object's value. If you pass <tt>include_seconds: false</tt>, it will be
+      # formatted by trying to call +strftime+ with "%H:%M" on the object's value.
+      # It is also possible to override this by passing the "value" option.
       #
-      # === Options
-      # * Accepts same options as time_field_tag
+      # ==== Options
       #
-      # === Example
+      # Supports the same options as FormTagHelper#time_field_tag.
+      #
+      # ==== Examples
+      #
       #   time_field("task", "started_at")
       #   # => <input id="task_started_at" name="task[started_at]" type="time" />
       #
@@ -1070,6 +1463,12 @@ module ActionView
       #   time_field("task", "started_at", min: "01:00:00")
       #   # => <input id="task_started_at" name="task[started_at]" type="time" min="01:00:00.000" />
       #
+      # By default, provided times will be formatted including seconds. You can render just the hour
+      # and minute by passing <tt>include_seconds: false</tt>. Some browsers will render a simpler UI
+      # if you exclude seconds in the timestamp format.
+      #
+      #   time_field("task", "started_at", value: Time.now, include_seconds: false)
+      #   # => <input id="task_started_at" name="task[started_at]" type="time" value="01:00" />
       def time_field(object_name, method, options = {})
         Tags::TimeField.new(object_name, method, self, options).render
       end
@@ -1099,6 +1498,12 @@ module ActionView
       #   datetime_field("user", "born_on", min: "2014-05-20T00:00:00")
       #   # => <input id="user_born_on" name="user[born_on]" type="datetime-local" min="2014-05-20T00:00:00.000" />
       #
+      # By default, provided datetimes will be formatted including seconds. You can render just the date, hour,
+      # and minute by passing <tt>include_seconds: false</tt>.
+      #
+      #   @user.born_on = Time.current
+      #   datetime_field("user", "born_on", include_seconds: false)
+      #   # => <input id="user_born_on" name="user[born_on]" type="datetime-local" value="2014-05-20T14:35" />
       def datetime_field(object_name, method, options = {})
         Tags::DatetimeLocalField.new(object_name, method, self, options).render
       end
@@ -1160,7 +1565,8 @@ module ActionView
       # Returns an input tag of type "number".
       #
       # ==== Options
-      # * Accepts same options as number_field_tag
+      #
+      # Supports the same options as FormTagHelper#number_field_tag.
       def number_field(object_name, method, options = {})
         Tags::NumberField.new(object_name, method, self, options).render
       end
@@ -1168,12 +1574,31 @@ module ActionView
       # Returns an input tag of type "range".
       #
       # ==== Options
-      # * Accepts same options as range_field_tag
+      #
+      # Supports the same options as FormTagHelper#range_field_tag.
       def range_field(object_name, method, options = {})
         Tags::RangeField.new(object_name, method, self, options).render
       end
 
+      def _object_for_form_builder(object) # :nodoc:
+        object.is_a?(Array) ? object.last : object
+      end
+
       private
+        def html_options_for_form_with(url_for_options = nil, model = nil, html: {}, local: !form_with_generates_remote_forms,
+          skip_enforcing_utf8: nil, **options)
+          html_options = options.slice(:id, :class, :multipart, :method, :data, :authenticity_token).merge!(html)
+          html_options[:remote] = html.delete(:remote) || !local
+          html_options[:method] ||= :patch if model.respond_to?(:persisted?) && model.persisted?
+          if skip_enforcing_utf8.nil?
+            if options.key?(:enforce_utf8)
+              html_options[:enforce_utf8] = options[:enforce_utf8]
+            end
+          else
+            html_options[:enforce_utf8] = !skip_enforcing_utf8
+          end
+          html_options_for_form(url_for_options.nil? ? {} : url_for_options, html_options)
+        end
 
         def instantiate_builder(record_name, record_object, options)
           case record_name
@@ -1182,7 +1607,7 @@ module ActionView
             object_name = record_name
           else
             object = record_name
-            object_name = model_name_from_record_or_class(object).param_key
+            object_name = model_name_from_record_or_class(object).param_key if object
           end
 
           builder = options[:builder] || default_form_builder_class
@@ -1208,7 +1633,7 @@ module ActionView
     # In the above block, a +FormBuilder+ object is yielded as the
     # +person_form+ variable. This allows you to generate the +text_field+
     # and +check_box+ fields by specifying their eponymous methods, which
-    # modify the underlying template and associates the +@person+ model object
+    # modify the underlying template and associates the <tt>@person</tt> model object
     # with the form.
     #
     # The +FormBuilder+ object can be thought of as serving as a proxy for the
@@ -1247,14 +1672,15 @@ module ActionView
       include ModelNaming
 
       # The methods which wrap a form helper call.
-      class_attribute :field_helpers
-      self.field_helpers = [:fields_for, :label, :text_field, :password_field,
-                            :hidden_field, :file_field, :text_area, :check_box,
-                            :radio_button, :color_field, :search_field,
-                            :telephone_field, :phone_field, :date_field,
-                            :time_field, :datetime_field, :datetime_local_field,
-                            :month_field, :week_field, :url_field, :email_field,
-                            :number_field, :range_field]
+      class_attribute :field_helpers, default: [
+        :fields_for, :fields, :label, :text_field, :password_field,
+        :hidden_field, :file_field, :text_area, :check_box,
+        :radio_button, :color_field, :search_field,
+        :telephone_field, :phone_field, :date_field,
+        :time_field, :datetime_field, :datetime_local_field,
+        :month_field, :week_field, :url_field, :email_field,
+        :number_field, :range_field
+      ]
 
       attr_accessor :object_name, :object, :options
 
@@ -1270,7 +1696,7 @@ module ActionView
       end
 
       def self._to_partial_path
-        @_to_partial_path ||= name.demodulize.underscore.sub!(/_builder$/, '')
+        @_to_partial_path ||= name.demodulize.underscore.sub!(/_builder$/, "")
       end
 
       def to_partial_path
@@ -1284,23 +1710,312 @@ module ActionView
       def initialize(object_name, object, template, options)
         @nested_child_index = {}
         @object_name, @object, @template, @options = object_name, object, template, options
-        @default_options = @options ? @options.slice(:index, :namespace) : {}
-        if @object_name.to_s.match(/\[\]$/)
-          if object ||= @template.instance_variable_get("@#{Regexp.last_match.pre_match}") and object.respond_to?(:to_param)
+        @default_options = @options ? @options.slice(:index, :namespace, :skip_default_ids, :allow_method_names_outside_object) : {}
+        @default_html_options = @default_options.except(:skip_default_ids, :allow_method_names_outside_object)
+
+        convert_to_legacy_options(@options)
+
+        if @object_name&.end_with?("[]")
+          if (object ||= @template.instance_variable_get("@#{@object_name[0..-3]}")) && object.respond_to?(:to_param)
             @auto_index = object.to_param
           else
             raise ArgumentError, "object[] naming but object param and @object var don't exist or don't respond to to_param: #{object.inspect}"
           end
         end
+
         @multipart = nil
         @index = options[:index] || options[:child_index]
       end
 
-      (field_helpers - [:label, :check_box, :radio_button, :fields_for, :hidden_field, :file_field]).each do |selector|
+      # Generate an HTML <tt>id</tt> attribute value.
+      #
+      # return the <tt><form></tt> element's <tt>id</tt> attribute.
+      #
+      #   <%= form_for @post do |f| %>
+      #     <%# ... %>
+      #
+      #     <% content_for :sticky_footer do %>
+      #       <%= form.button(form: f.id) %>
+      #     <% end %>
+      #   <% end %>
+      #
+      # In the example above, the <tt>:sticky_footer</tt> content area will
+      # exist outside of the <tt><form></tt> element. By declaring the
+      # <tt>form</tt> HTML attribute, we hint to the browser that the generated
+      # <tt><button></tt> element should be treated as the <tt><form></tt>
+      # element's submit button, regardless of where it exists in the DOM.
+      def id
+        options.dig(:html, :id)
+      end
+
+      # Generate an HTML <tt>id</tt> attribute value for the given field
+      #
+      # Return the value generated by the <tt>FormBuilder</tt> for the given
+      # attribute name.
+      #
+      #   <%= form_for @post do |f| %>
+      #     <%= f.label :title %>
+      #     <%= f.text_field :title, aria: { describedby: f.field_id(:title, :error) } %>
+      #     <%= tag.span("is blank", id: f.field_id(:title, :error) %>
+      #   <% end %>
+      #
+      # In the example above, the <tt><input type="text"></tt> element built by
+      # the call to <tt>FormBuilder#text_field</tt> declares an
+      # <tt>aria-describedby</tt> attribute referencing the <tt><span></tt>
+      # element, sharing a common <tt>id</tt> root (<tt>post_title</tt>, in this
+      # case).
+      def field_id(method, *suffixes, namespace: @options[:namespace], index: @index)
+        @template.field_id(@object_name, method, *suffixes, namespace: namespace, index: index)
+      end
+
+      # Generate an HTML <tt>name</tt> attribute value for the given name and
+      # field combination
+      #
+      # Return the value generated by the <tt>FormBuilder</tt> for the given
+      # attribute name.
+      #
+      #   <%= form_for @post do |f| %>
+      #     <%= f.text_field :title, name: f.field_name(:title, :subtitle) %>
+      #     <%# => <input type="text" name="post[title][subtitle]">
+      #   <% end %>
+      #
+      #   <%= form_for @post do |f| %>
+      #     <%= f.field_tag :tag, name: f.field_name(:tag, multiple: true) %>
+      #     <%# => <input type="text" name="post[tag][]">
+      #   <% end %>
+      #
+      def field_name(method, *methods, multiple: false, index: @index)
+        object_name = @options.fetch(:as) { @object_name }
+
+        @template.field_name(object_name, method, *methods, index: index, multiple: multiple)
+      end
+
+      ##
+      # :method: text_field
+      #
+      # :call-seq: text_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#text_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.text_field :name %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: password_field
+      #
+      # :call-seq: password_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#password_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.password_field :password %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: text_area
+      #
+      # :call-seq: text_area(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#text_area for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.text_area :detail %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: color_field
+      #
+      # :call-seq: color_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#color_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.color_field :favorite_color %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: search_field
+      #
+      # :call-seq: search_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#search_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.search_field :name %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: telephone_field
+      #
+      # :call-seq: telephone_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#telephone_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.telephone_field :phone %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: phone_field
+      #
+      # :call-seq: phone_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#phone_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.phone_field :phone %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: date_field
+      #
+      # :call-seq: date_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#date_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.date_field :born_on %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: time_field
+      #
+      # :call-seq: time_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#time_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.time_field :born_at %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: datetime_field
+      #
+      # :call-seq: datetime_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#datetime_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.datetime_field :graduation_day %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: datetime_local_field
+      #
+      # :call-seq: datetime_local_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#datetime_local_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.datetime_local_field :graduation_day %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: month_field
+      #
+      # :call-seq: month_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#month_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.month_field :birthday_month %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: week_field
+      #
+      # :call-seq: week_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#week_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.week_field :birthday_week %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: url_field
+      #
+      # :call-seq: url_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#url_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.url_field :homepage %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: email_field
+      #
+      # :call-seq: email_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#email_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.email_field :address %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: number_field
+      #
+      # :call-seq: number_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#number_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.number_field :age %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      ##
+      # :method: range_field
+      #
+      # :call-seq: range_field(method, options = {})
+      #
+      # Wraps ActionView::Helpers::FormHelper#range_field for form builders:
+      #
+      #   <%= form_with model: @user do |f| %>
+      #     <%= f.range_field :age %>
+      #   <% end %>
+      #
+      # Please refer to the documentation of the base helper for details.
+
+      (field_helpers - [:label, :check_box, :radio_button, :fields_for, :fields, :hidden_field, :file_field]).each do |selector|
         class_eval <<-RUBY_EVAL, __FILE__, __LINE__ + 1
           def #{selector}(method, options = {})  # def text_field(method, options = {})
-            @template.send(                      #   @template.send(
-              #{selector.inspect},               #     "text_field",
+            @template.public_send(               #   @template.public_send(
+              #{selector.inspect},               #     :text_field,
               @object_name,                      #     @object_name,
               method,                            #     method,
               objectify_options(options))        #     objectify_options(options))
@@ -1365,9 +2080,21 @@ module ActionView
       # _class_ of the model object, e.g. if <tt>@person.permission</tt>, is
       # of class +Permission+, the field will still be named <tt>permission[admin]</tt>.
       #
-      # Note: This also works for the methods in FormOptionHelper and
+      # Note: This also works for the methods in FormOptionsHelper and
       # DateHelper that are designed to work with an object as base, like
-      # FormOptionHelper#collection_select and DateHelper#datetime_select.
+      # FormOptionsHelper#collection_select and DateHelper#datetime_select.
+      #
+      # +fields_for+ tries to be smart about parameters, but it can be confused if both
+      # name and value parameters are provided and the provided value has the shape of an
+      # option Hash. To remove the ambiguity, explicitly pass an option Hash, even if empty.
+      #
+      #   <%= form_for @person do |person_form| %>
+      #     ...
+      #     <%= fields_for :permission, @person.permission, {} do |permission_fields| %>
+      #       Admin?: <%= check_box_tag permission_fields.field_name(:admin), @person.permission[:admin] %>
+      #     <% end %>
+      #     ...
+      #   <% end %>
       #
       # === Nested Attributes Examples
       #
@@ -1433,7 +2160,7 @@ module ActionView
       #
       # Now, when you use a form element with the <tt>_destroy</tt> parameter,
       # with a value that evaluates to +true+, you will destroy the associated
-      # model (eg. 1, '1', true, or 'true'):
+      # model (e.g. 1, '1', true, or 'true'):
       #
       #   <%= form_for @person do |person_form| %>
       #     ...
@@ -1522,7 +2249,7 @@ module ActionView
       # This will allow you to specify which models to destroy in the
       # attributes hash by adding a form element for the <tt>_destroy</tt>
       # parameter with a value that evaluates to +true+
-      # (eg. 1, '1', true, or 'true'):
+      # (e.g. 1, '1', true, or 'true'):
       #
       #   <%= form_for @person do |person_form| %>
       #     ...
@@ -1549,8 +2276,9 @@ module ActionView
       # to store the ID of the record. There are circumstances where this
       # hidden field is not needed and you can pass <tt>include_id: false</tt>
       # to prevent fields_for from rendering it automatically.
-      def fields_for(record_name, record_object = nil, fields_options = {}, &block)
-        fields_options, record_object = record_object, nil if record_object.is_a?(Hash) && record_object.extractable_options?
+      def fields_for(record_name, record_object = nil, fields_options = nil, &block)
+        fields_options, record_object = record_object, nil if fields_options.nil? && record_object.is_a?(Hash) && record_object.extractable_options?
+        fields_options ||= {}
         fields_options[:builder] ||= options[:builder]
         fields_options[:namespace] = options[:namespace]
         fields_options[:parent_builder] = self
@@ -1561,33 +2289,43 @@ module ActionView
             return fields_for_with_nested_attributes(record_name, record_object, fields_options, block)
           end
         else
-          record_object = record_name.is_a?(Array) ? record_name.last : record_name
+          record_object = @template._object_for_form_builder(record_name)
           record_name   = model_name_from_record_or_class(record_object).param_key
         end
 
+        object_name = @object_name
         index = if options.has_key?(:index)
           options[:index]
         elsif defined?(@auto_index)
-          self.object_name = @object_name.to_s.sub(/\[\]$/,"")
+          object_name = object_name.to_s.delete_suffix("[]")
           @auto_index
         end
 
         record_name = if index
-                        "#{object_name}[#{index}][#{record_name}]"
-                      elsif record_name.to_s.end_with?('[]')
-                        record_name = record_name.to_s.sub(/(.*)\[\]$/, "[\\1][#{record_object.id}]")
-                        "#{object_name}#{record_name}"
-                      else
-                        "#{object_name}[#{record_name}]"
-                      end
+          "#{object_name}[#{index}][#{record_name}]"
+        elsif record_name.end_with?("[]")
+          "#{object_name}[#{record_name[0..-3]}][#{record_object.id}]"
+        else
+          "#{object_name}[#{record_name}]"
+        end
         fields_options[:child_index] = index
 
         @template.fields_for(record_name, record_object, fields_options, &block)
       end
 
+      # See the docs for the ActionView::Helpers::FormHelper#fields helper method.
+      def fields(scope = nil, model: nil, **options, &block)
+        options[:allow_method_names_outside_object] = true
+        options[:skip_default_ids] = !FormHelper.form_with_generates_ids
+
+        convert_to_legacy_options(options)
+
+        fields_for(scope || model, model, options, &block)
+      end
+
       # Returns a label tag tailored for labelling an input field for a specified attribute (identified by +method+) on an object
       # assigned to the template (identified by +object+). The text of label will default to the attribute name unless a translation
-      # is found in the current I18n locale (through helpers.label.<modelname>.<attribute>) or you specify it explicitly.
+      # is found in the current I18n locale (through <tt>helpers.label.<modelname>.<attribute></tt>) or you specify it explicitly.
       # Additional options on the label tag can be passed as a hash with +options+. These options will be tagged
       # onto the HTML as an HTML element attribute as in the example shown, except for the <tt>:value</tt> option, which is designed to
       # target labels for radio_button tags (where the value is used in the ID of the input tag).
@@ -1629,6 +2367,24 @@ module ActionView
       #   label(:privacy, "Public Post", value: "public")
       #   # => <label for="post_privacy_public">Public Post</label>
       #
+      #   label(:cost) do |translation|
+      #     content_tag(:span, translation, class: "cost_label")
+      #   end
+      #   # => <label for="post_cost"><span class="cost_label">Total cost</span></label>
+      #
+      #   label(:cost) do |builder|
+      #     content_tag(:span, builder.translation, class: "cost_label")
+      #   end
+      #   # => <label for="post_cost"><span class="cost_label">Total cost</span></label>
+      #
+      #   label(:cost) do |builder|
+      #     content_tag(:span, builder.translation, class: [
+      #       "cost_label",
+      #       ("error_label" if builder.object.errors.include?(:cost))
+      #     ])
+      #   end
+      #   # => <label for="post_cost"><span class="cost_label error_label">Total cost</span></label>
+      #
       #   label(:terms) do
       #     raw('Accept <a href="/terms">Terms</a>.')
       #   end
@@ -1643,6 +2399,12 @@ module ActionView
       # Additional options on the input tag can be passed as a hash with +options+. The +checked_value+ defaults to 1
       # while the default +unchecked_value+ is set to 0 which is convenient for boolean values.
       #
+      # ==== Options
+      #
+      # * Any standard HTML attributes for the tag can be passed in, for example +:class+.
+      # * <tt>:checked</tt> - +true+ or +false+ forces the state of the checkbox to be checked or not.
+      # * <tt>:include_hidden</tt> - If set to false, the auxiliary hidden field described below will not be generated.
+      #
       # ==== Gotcha
       #
       # The HTML specification says unchecked check boxes are not successful, and
@@ -1656,7 +2418,7 @@ module ActionView
       # wouldn't update the flag.
       #
       # To prevent this the helper generates an auxiliary hidden field before
-      # the very check box. The hidden field has the same name and its
+      # every check box. The hidden field has the same name and its
       # attributes mimic an unchecked check box.
       #
       # This way, the client either sends only the hidden field (representing
@@ -1679,6 +2441,8 @@ module ActionView
       #
       # In that case it is preferable to either use +check_box_tag+ or to use
       # hashes instead of arrays.
+      #
+      # ==== Examples
       #
       #   # Let's say that @post.validated? is 1:
       #   check_box("validated")
@@ -1711,7 +2475,7 @@ module ActionView
       #   # => <input type="radio" id="post_category_rails" name="post[category]" value="rails" checked="checked" />
       #   #    <input type="radio" id="post_category_java" name="post[category]" value="java" />
       #
-      #   # Let's say that @user.category returns "no":
+      #   # Let's say that @user.receive_newsletter returns "no":
       #   radio_button("receive_newsletter", "yes")
       #   radio_button("receive_newsletter", "no")
       #   # => <input type="radio" id="user_receive_newsletter_yes" name="user[receive_newsletter]" value="yes" />
@@ -1748,12 +2512,13 @@ module ActionView
       # hash with +options+. These options will be tagged onto the HTML as an HTML element attribute as in the example
       # shown.
       #
-      # Using this method inside a +form_for+ block will set the enclosing form's encoding to <tt>multipart/form-data</tt>.
+      # Using this method inside a +form_with+ block will set the enclosing form's encoding to <tt>multipart/form-data</tt>.
       #
       # ==== Options
       # * Creates standard HTML attributes for the tag.
       # * <tt>:disabled</tt> - If set to true, the user will not be able to use this input.
       # * <tt>:multiple</tt> - If set to true, *in most updated browsers* the user will be allowed to select multiple files.
+      # * <tt>:include_hidden</tt> - When <tt>multiple: true</tt> and <tt>include_hidden: true</tt>, the field will be prefixed with an <tt><input type="hidden"></tt> field with an empty value to support submitting an empty collection of files.
       # * <tt>:accept</tt> - If set to one or multiple mime-types, the user will be suggested a filter when choosing a file. You still need to set up model validations.
       #
       # ==== Examples
@@ -1788,11 +2553,11 @@ module ActionView
       #     <%= f.submit %>
       #   <% end %>
       #
-      # In the example above, if @post is a new record, it will use "Create Post" as
-      # submit button label, otherwise, it uses "Update Post".
+      # In the example above, if <tt>@post</tt> is a new record, it will use "Create Post" as
+      # submit button label; otherwise, it uses "Update Post".
       #
-      # Those labels can be customized using I18n, under the helpers.submit key and accept
-      # the %{model} as translation interpolation:
+      # Those labels can be customized using I18n under the +helpers.submit+ key and using
+      # <tt>%{model}</tt> for translation interpolation:
       #
       #   en:
       #     helpers:
@@ -1800,7 +2565,7 @@ module ActionView
       #         create: "Create a %{model}"
       #         update: "Confirm changes to %{model}"
       #
-      # It also searches for a key specific for the given object:
+      # It also searches for a key specific to the given object:
       #
       #   en:
       #     helpers:
@@ -1808,7 +2573,7 @@ module ActionView
       #         post:
       #           create: "Add %{model}"
       #
-      def submit(value=nil, options={})
+      def submit(value = nil, options = {})
         value, options = nil, value if value.is_a?(Hash)
         value ||= submit_default_value
         @template.submit_tag(value, options)
@@ -1821,11 +2586,11 @@ module ActionView
       #     <%= f.button %>
       #   <% end %>
       #
-      # In the example above, if @post is a new record, it will use "Create Post" as
-      # button label, otherwise, it uses "Update Post".
+      # In the example above, if <tt>@post</tt> is a new record, it will use "Create Post" as
+      # button label; otherwise, it uses "Update Post".
       #
-      # Those labels can be customized using I18n, under the helpers.submit key
-      # (the same as submit helper) and accept the %{model} as translation interpolation:
+      # Those labels can be customized using I18n under the +helpers.submit+ key
+      # (the same as submit helper) and using <tt>%{model}</tt> for translation interpolation:
       #
       #   en:
       #     helpers:
@@ -1833,7 +2598,7 @@ module ActionView
       #         create: "Create a %{model}"
       #         update: "Confirm changes to %{model}"
       #
-      # It also searches for a key specific for the given object:
+      # It also searches for a key specific to the given object:
       #
       #   en:
       #     helpers:
@@ -1845,6 +2610,9 @@ module ActionView
       #   button("Create post")
       #   # => <button name='button' type='submit'>Create post</button>
       #
+      #   button(:draft, value: true)
+      #   # => <button id="post_draft" name="post[draft]" value="true" type="submit">Create post</button>
+      #
       #   button do
       #     content_tag(:strong, 'Ask me!')
       #   end
@@ -1852,19 +2620,50 @@ module ActionView
       #   #      <strong>Ask me!</strong>
       #   #    </button>
       #
+      #   button do |text|
+      #     content_tag(:strong, text)
+      #   end
+      #   # => <button name='button' type='submit'>
+      #   #      <strong>Create post</strong>
+      #   #    </button>
+      #
+      #   button(:draft, value: true) do
+      #     content_tag(:strong, "Save as draft")
+      #   end
+      #   # =>  <button id="post_draft" name="post[draft]" value="true" type="submit">
+      #   #       <strong>Save as draft</strong>
+      #   #     </button>
+      #
       def button(value = nil, options = {}, &block)
-        value, options = nil, value if value.is_a?(Hash)
+        case value
+        when Hash
+          value, options = nil, value
+        when Symbol
+          value, options = nil, { name: field_name(value), id: field_id(value) }.merge!(options.to_h)
+        end
         value ||= submit_default_value
-        @template.button_tag(value, options, &block)
+
+        if block_given?
+          value = @template.capture { yield(value) }
+        end
+
+        formmethod = options[:formmethod]
+        if formmethod.present? && !/post|get/i.match?(formmethod) && !options.key?(:name) && !options.key?(:value)
+          options.merge! formmethod: :post, name: "_method", value: formmethod
+        end
+
+        @template.button_tag(value, options)
       end
 
-      def emitted_hidden_id?
+      def emitted_hidden_id? # :nodoc:
         @emitted_hidden_id ||= nil
       end
 
       private
         def objectify_options(options)
-          @default_options.merge(options.merge(object: @object))
+          result = @default_options.merge(options)
+          result[:object] = @object
+          result
         end
 
         def submit_default_value
@@ -1878,7 +2677,12 @@ module ActionView
           end
 
           defaults = []
-          defaults << :"helpers.submit.#{object_name}.#{key}"
+          # Object is a model and it is not overwritten by as and scope option.
+          if object.respond_to?(:model_name) && object_name.to_s == model.downcase
+            defaults << :"helpers.submit.#{object.model_name.i18n_key}.#{key}"
+          else
+            defaults << :"helpers.submit.#{object_name}.#{key}"
+          end
           defaults << :"helpers.submit.#{key}"
           defaults << "#{key.to_s.humanize} #{model}"
 
@@ -1894,9 +2698,9 @@ module ActionView
           association = convert_to_model(association)
 
           if association.respond_to?(:persisted?)
-            association = [association] if @object.send(association_name).respond_to?(:to_ary)
+            association = [association] if @object.public_send(association_name).respond_to?(:to_ary)
           elsif !association.respond_to?(:to_ary)
-            association = @object.send(association_name)
+            association = @object.public_send(association_name)
           end
 
           if association.respond_to?(:to_ary)
@@ -1908,7 +2712,9 @@ module ActionView
               else
                 options[:child_index] = nested_child_index(name)
               end
-              output << fields_for_nested_model("#{name}[#{options[:child_index]}]", child, options, block)
+              if content = fields_for_nested_model("#{name}[#{options[:child_index]}]", child, options, block)
+                output << content
+              end
             end
             output
           elsif association
@@ -1933,12 +2739,16 @@ module ActionView
           @nested_child_index[name] ||= -1
           @nested_child_index[name] += 1
         end
+
+        def convert_to_legacy_options(options)
+          if options.key?(:skip_id)
+            options[:include_id] = !options.delete(:skip_id)
+          end
+        end
     end
   end
 
   ActiveSupport.on_load(:action_view) do
-    cattr_accessor(:default_form_builder, instance_writer: false, instance_reader: false) do
-      ::ActionView::Helpers::FormBuilder
-    end
+    cattr_accessor :default_form_builder, instance_writer: false, instance_reader: false, default: ::ActionView::Helpers::FormBuilder
   end
 end

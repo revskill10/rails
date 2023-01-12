@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module AbstractController
   # Includes +url_for+ into the host class (e.g. an abstract controller or mailer). The class
   # has to provide a +RouteSet+ by implementing the <tt>_routes</tt> methods. Otherwise, an
@@ -20,12 +22,10 @@ module AbstractController
       end
 
       def action_methods
-        @action_methods ||= begin
-          if _routes
-            super - _routes.named_routes.helper_names
-          else
-            super
-          end
+        @action_methods ||= if _routes
+          super - _routes.named_routes.helper_names
+        else
+          super
         end
       end
     end

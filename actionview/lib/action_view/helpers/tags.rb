@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 module ActionView
-  module Helpers
-    module Tags #:nodoc:
+  module Helpers # :nodoc:
+    module Tags # :nodoc:
       extend ActiveSupport::Autoload
 
       eager_autoload do
@@ -36,6 +38,7 @@ module ActionView
         autoload :TimeZoneSelect
         autoload :UrlField
         autoload :WeekField
+        autoload :WeekdaySelect
       end
     end
   end

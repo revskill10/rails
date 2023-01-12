@@ -1,6 +1,13 @@
-*   Exception handling: use `rescue_from` to handle exceptions raised by
-    mailer actions, by message delivery, and by deferred delivery jobs.
+*   Added ability to download `.eml` file for the email preview.
 
-    *Jeremy Daer*
+    *Igor Kasyanchuk*
 
-Please check [5-0-stable](https://github.com/rails/rails/blob/5-0-stable/actionmailer/CHANGELOG.md) for previous changes.
+*   Support multiple preview paths for mailers.
+
+    Option `config.action_mailer.preview_path` is deprecated in favor of
+    `config.action_mailer.preview_paths`. Appending paths to this configuration option
+    will cause those paths to be used in the search for mailer previews.
+
+    *fatkodima*
+
+Please check [7-0-stable](https://github.com/rails/rails/blob/7-0-stable/actionmailer/CHANGELOG.md) for previous changes.

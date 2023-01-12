@@ -1,5 +1,7 @@
-require 'active_support/core_ext/object/json'
-require 'active_support/core_ext/module/delegation'
+# frozen_string_literal: true
+
+require "active_support/core_ext/object/json"
+require "active_support/core_ext/module/delegation"
 
 module ActiveSupport
   class << self
@@ -7,7 +9,7 @@ module ActiveSupport
       :time_precision, :time_precision=,
       :escape_html_entities_in_json, :escape_html_entities_in_json=,
       :json_encoder, :json_encoder=,
-      :to => :'ActiveSupport::JSON::Encoding'
+      to: :'ActiveSupport::JSON::Encoding'
   end
 
   module JSON
@@ -16,12 +18,15 @@ module ActiveSupport
     #
     #   ActiveSupport::JSON.encode({ team: 'rails', players: '36' })
     #   # => "{\"team\":\"rails\",\"players\":\"36\"}"
-    def self.encode(value, options = nil)
-      Encoding.json_encoder.new(options).encode(value)
+    class << self
+      def encode(value, options = nil)
+        Encoding.json_encoder.new(options).encode(value)
+      end
+      alias_method :dump, :encode
     end
 
-    module Encoding #:nodoc:
-      class JSONGemEncoder #:nodoc:
+    module Encoding # :nodoc:
+      class JSONGemEncoder # :nodoc:
         attr_reader :options
 
         def initialize(options = nil)
@@ -40,21 +45,25 @@ module ActiveSupport
           ESCAPED_CHARS = {
             "\u2028" => '\u2028',
             "\u2029" => '\u2029',
-            '>'      => '\u003e',
-            '<'      => '\u003c',
-            '&'      => '\u0026',
+            ">"      => '\u003e',
+            "<"      => '\u003c',
+            "&"      => '\u0026',
             }
 
           ESCAPE_REGEX_WITH_HTML_ENTITIES = /[\u2028\u2029><&]/u
           ESCAPE_REGEX_WITHOUT_HTML_ENTITIES = /[\u2028\u2029]/u
 
           # This class wraps all the strings we see and does the extra escaping
-          class EscapedString < String #:nodoc:
+          class EscapedString < String # :nodoc:
             def to_json(*)
               if Encoding.escape_html_entities_in_json
-                super.gsub ESCAPE_REGEX_WITH_HTML_ENTITIES, ESCAPED_CHARS
+                s = super
+                s.gsub! ESCAPE_REGEX_WITH_HTML_ENTITIES, ESCAPED_CHARS
+                s
               else
-                super.gsub ESCAPE_REGEX_WITHOUT_HTML_ENTITIES, ESCAPED_CHARS
+                s = super
+                s.gsub! ESCAPE_REGEX_WITHOUT_HTML_ENTITIES, ESCAPED_CHARS
+                s
               end
             end
 
@@ -68,7 +77,8 @@ module ActiveSupport
             :ESCAPE_REGEX_WITHOUT_HTML_ENTITIES, :EscapedString
 
           # Convert an object into a "JSON-ready" representation composed of
-          # primitives like Hash, Array, String, Numeric, and true/false/nil.
+          # primitives like Hash, Array, String, Numeric,
+          # and +true+/+false+/+nil+.
           # Recursively calls #as_json to the object to recursively build a
           # fully JSON-ready object.
           #
@@ -84,9 +94,13 @@ module ActiveSupport
             when String
               EscapedString.new(value)
             when Numeric, NilClass, TrueClass, FalseClass
-              value
+              value.as_json
             when Hash
-              Hash[value.map { |k, v| [jsonify(k), jsonify(v)] }]
+              result = {}
+              value.each do |k, v|
+                result[jsonify(k)] = jsonify(v)
+              end
+              result
             when Array
               value.map { |v| jsonify(v) }
             else

@@ -1,6 +1,9 @@
-require 'abstract_unit'
-require 'active_support/core_ext/class'
-require 'set'
+# frozen_string_literal: true
+
+require_relative "../abstract_unit"
+require "active_support/core_ext/class"
+require "active_support/descendants_tracker"
+require "set"
 
 class ClassTest < ActiveSupport::TestCase
   class Parent; end
@@ -24,5 +27,29 @@ class ClassTest < ActiveSupport::TestCase
     assert_equal [Bar], Foo.subclasses
     assert_equal [Baz], Bar.subclasses
     assert_equal [], Baz.subclasses
+  end
+
+  def test_descendants_excludes_singleton_classes
+    klass = Parent.new.singleton_class
+    assert_not Parent.descendants.include?(klass), "descendants should not include singleton classes"
+  end
+
+  def test_subclasses_excludes_singleton_classes
+    klass = Parent.new.singleton_class
+    assert_not Parent.subclasses.include?(klass), "subclasses should not include singleton classes"
+  end
+
+  def test_subclasses_exclude_reloaded_classes
+    subclass = Class.new(Parent)
+    assert_includes Parent.subclasses, subclass
+    ActiveSupport::DescendantsTracker.clear(Set[subclass])
+    assert_not_includes Parent.subclasses, subclass
+  end
+
+  def test_descendants_exclude_reloaded_classes
+    subclass = Class.new(Parent)
+    assert_includes Parent.descendants, subclass
+    ActiveSupport::DescendantsTracker.clear(Set[subclass])
+    assert_not_includes Parent.descendants, subclass
   end
 end
